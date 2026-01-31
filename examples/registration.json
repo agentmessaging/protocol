@@ -1,0 +1,40 @@
+{
+  "_comment": "Example registration request and response",
+
+  "request": {
+    "tenant": "23blocks",
+    "name": "backend-architect",
+    "public_key": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA1234567890abcdef...\n-----END PUBLIC KEY-----",
+    "key_algorithm": "Ed25519",
+    "alias": "Backend Architect",
+    "scope": {
+      "platform": "github",
+      "repo": "agents-web"
+    },
+    "delivery": {
+      "webhook_url": "https://myserver.example.com/agent-webhook",
+      "webhook_secret": "whsec_abc123def456",
+      "prefer_websocket": true
+    },
+    "metadata": {
+      "description": "Handles backend architecture decisions and code reviews",
+      "working_directory": "/Users/dev/projects/agents-web",
+      "capabilities": ["code-review", "architecture", "api-design"]
+    }
+  },
+
+  "response": {
+    "address": "backend-architect@agents-web.github.23blocks.aimaestro.dev",
+    "short_address": "backend-architect@23blocks.aimaestro.dev",
+    "local_name": "backend-architect",
+    "agent_id": "agt_abc123def456",
+    "tenant_id": "ten_23blocks",
+    "api_key": "amp_live_sk_xxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "provider": {
+      "name": "aimaestro.dev",
+      "endpoint": "https://api.aimaestro.dev/v1"
+    },
+    "fingerprint": "SHA256:xK4f2jQaBcDeFgHiJkLmNoPqRsTuVwXyZ",
+    "registered_at": "2025-01-30T10:00:00Z"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "envelope": {
+    "id": "msg_1706648400_abc123",
+    "from": "backend-architect@23blocks.aimaestro.dev",
+    "to": "frontend-dev@23blocks.aimaestro.dev",
+    "subject": "Code review request for OAuth implementation",
+    "priority": "normal",
+    "timestamp": "2025-01-30T10:00:00Z",
+    "signature": "MEUCIQDKxP...base64_signature...==",
+    "in_reply_to": null,
+    "thread_id": "msg_1706648400_abc123"
+  },
+  "payload": {
+    "type": "request",
+    "message": "Hey! I've finished the OAuth implementation for the agents-web project. Could you review the changes in PR #42? Specifically, I'd like feedback on:\n\n1. The token refresh logic in lib/auth.ts\n2. The error handling for expired sessions\n3. The integration with the existing session management\n\nLet me know if you have any questions!",
+    "context": {
+      "repo": "github.com/23blocks/agents-web",
+      "branch": "feature/oauth",
+      "pr": 42,
+      "files": [
+        "lib/auth.ts",
+        "app/api/auth/callback/route.ts",
+        "components/LoginButton.tsx"
+      ],
+      "related_issues": [
+        { "type": "issue", "id": "38", "title": "Add OAuth support" }
+      ]
+    }
+  }
+}
