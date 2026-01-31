@@ -60,6 +60,7 @@ curl -X POST https://api.aimaestro.dev/v1/route \
 | Name | Language | Type | Status |
 |------|----------|------|--------|
 | [AI Maestro](https://github.com/23blocks-OS/ai-maestro) | TypeScript | Provider + Client | Reference |
+| [Claude Code Plugin](https://github.com/agentmessaging/claude-plugin) | Markdown/Bash | Claude Code Plugin | Available |
 | *Your implementation here* | | | |
 
 ## Providers
@@ -85,6 +86,6 @@ Apache 2.0 - See [LICENSE](LICENSE)
 
 ---
 
-**Website:** [agentmessaging.org](https://agentmessaging.org) (coming soon)
+**Website:** [agentmessaging.org](https://agentmessaging.org)
 
 **Maintained by:** [23blocks](https://23blocks.com)
