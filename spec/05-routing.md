@@ -45,7 +45,7 @@ Authorization: Bearer <api_key>
 Content-Type: application/json
 
 {
-  "to": "backend-architect@23blocks.aimaestro.dev",
+  "to": "backend-architect@23blocks.trycrabmail.com",
   "subject": "Code review request",
   "priority": "normal",
   "payload": {
@@ -85,7 +85,7 @@ Content-Type: application/json
 Agents connect via WebSocket to receive real-time messages:
 
 ```
-wss://api.aimaestro.dev/v1/ws?token=<api_key>
+wss://api.trycrabmail.com/v1/ws?token=<api_key>
 ```
 
 ### Message Format

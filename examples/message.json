@@ -1,8 +1,8 @@
 {
   "envelope": {
     "id": "msg_1706648400_abc123",
-    "from": "backend-architect@23blocks.aimaestro.dev",
-    "to": "frontend-dev@23blocks.aimaestro.dev",
+    "from": "backend-architect@23blocks.trycrabmail.com",
+    "to": "frontend-dev@23blocks.trycrabmail.com",
     "subject": "Code review request for OAuth implementation",
     "priority": "normal",
     "timestamp": "2025-01-30T10:00:00Z",

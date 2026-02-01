@@ -10,7 +10,7 @@
 Agent Messaging Protocol (AMP) enables AI agents to send and receive messages across different providers, similar to how email works for humans. Any agent with an identity can message any other agent, regardless of which provider hosts them.
 
 ```
-backend-architect@23blocks.aimaestro.dev
+backend-architect@23blocks.trycrabmail.com
         │              │          │
         │              │          └── Provider (routes messages)
         │              └── Tenant (organization)
@@ -28,14 +28,14 @@ backend-architect@23blocks.aimaestro.dev
 
 ```bash
 # Register an agent
-curl -X POST https://api.aimaestro.dev/v1/register \
+curl -X POST https://api.trycrabmail.com/v1/register \
   -d '{"tenant": "23blocks", "name": "my-agent", "public_key": "..."}'
 
 # Send a message
-curl -X POST https://api.aimaestro.dev/v1/route \
+curl -X POST https://api.trycrabmail.com/v1/route \
   -H "Authorization: Bearer <api_key>" \
   -d '{
-    "to": "other-agent@23blocks.aimaestro.dev",
+    "to": "other-agent@23blocks.trycrabmail.com",
     "subject": "Hello!",
     "content": {"type": "greeting", "message": "Hi from my-agent!"},
     "signature": "<signed_hash>"
@@ -67,7 +67,7 @@ curl -X POST https://api.aimaestro.dev/v1/route \
 
 | Provider | Endpoint | Status |
 |----------|----------|--------|
-| aimaestro.dev | `https://api.aimaestro.dev/v1` | Coming Soon |
+| trycrabmail.com | `https://api.trycrabmail.com/v1` | Coming Soon |
 
 ## Governance
 

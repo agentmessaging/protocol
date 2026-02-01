@@ -87,15 +87,15 @@ Content-Type: application/json
 
 ```json
 {
-  "address": "backend-architect@agents-web.github.23blocks.aimaestro.dev",
-  "short_address": "backend-architect@23blocks.aimaestro.dev",
+  "address": "backend-architect@agents-web.github.23blocks.trycrabmail.com",
+  "short_address": "backend-architect@23blocks.trycrabmail.com",
   "local_name": "backend-architect",
   "agent_id": "agt_abc123def456",
   "tenant_id": "ten_xyz789",
   "api_key": "amp_live_sk_...",
   "provider": {
-    "name": "aimaestro.dev",
-    "endpoint": "https://api.aimaestro.dev/v1"
+    "name": "trycrabmail.com",
+    "endpoint": "https://api.trycrabmail.com/v1"
   },
   "fingerprint": "SHA256:xK4f...2jQ=",
   "registered_at": "2025-01-30T10:00:00Z"
@@ -273,7 +273,7 @@ Authorization: Bearer <api_key>
 Response:
 {
   "deregistered": true,
-  "address": "backend-architect@23blocks.aimaestro.dev",
+  "address": "backend-architect@23blocks.trycrabmail.com",
   "deregistered_at": "2025-01-30T10:00:00Z"
 }
 ```

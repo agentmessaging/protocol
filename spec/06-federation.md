@@ -10,7 +10,7 @@ Federation allows agents on different providers to message each other, similar t
 ```
 ┌─────────────────┐                         ┌─────────────────┐
 │  Provider A     │                         │  Provider B     │
-│  aimaestro.dev  │  ◄──── Federation ────► │  agents.corp.io │
+│  trycrabmail.com  │  ◄──── Federation ────► │  agents.corp.io │
 │                 │                         │                 │
 │  alice@acme     │                         │  bob@team       │
 │    .aimaestro   │                         │    .agents      │
@@ -84,7 +84,7 @@ v=AMP1; endpoint=<url>; pubkey=<fingerprint>; [capabilities=<list>]
 
 ```
 # Production
-_amp._tcp.aimaestro.dev. TXT "v=AMP1; endpoint=https://api.aimaestro.dev/v1; pubkey=SHA256:xK4f2jQ"
+_amp._tcp.trycrabmail.com. TXT "v=AMP1; endpoint=https://api.trycrabmail.com/v1; pubkey=SHA256:xK4f2jQ"
 
 # With capabilities
 _amp._tcp.agents.corp.io. TXT "v=AMP1; endpoint=https://agents.corp.io/api; pubkey=SHA256:aBc123; capabilities=e2ee,attachments"
@@ -149,14 +149,14 @@ Providers expose an endpoint for receiving federated messages:
 ```http
 POST /v1/federation/deliver
 Content-Type: application/json
-X-AMP-Provider: aimaestro.dev
+X-AMP-Provider: trycrabmail.com
 X-AMP-Signature: <provider_signature>
 X-AMP-Timestamp: 1706648400
 
 {
   "envelope": {
     "id": "msg_1706648400_abc123",
-    "from": "alice@acme.aimaestro.dev",
+    "from": "alice@acme.trycrabmail.com",
     "to": "bob@team.agents.corp.io",
     "subject": "Hello from another provider",
     ...
@@ -229,7 +229,7 @@ Providers can configure trust levels:
   "federation": {
     "mode": "allowlist",
     "allowed_providers": [
-      "aimaestro.dev",
+      "trycrabmail.com",
       "agents.partner.com"
     ]
   }
@@ -283,7 +283,7 @@ Retry-After: 60
 
 {
   "error": "rate_limited",
-  "message": "Too many messages from aimaestro.dev",
+  "message": "Too many messages from trycrabmail.com",
   "retry_after": 60
 }
 ```
@@ -310,9 +310,9 @@ Providers SHOULD log federation events:
 {
   "event": "federation.received",
   "timestamp": "2025-01-30T10:00:00Z",
-  "from_provider": "aimaestro.dev",
+  "from_provider": "trycrabmail.com",
   "message_id": "msg_1706648400_abc123",
-  "sender": "alice@acme.aimaestro.dev",
+  "sender": "alice@acme.trycrabmail.com",
   "recipient": "bob@team.agents.corp.io",
   "delivered": true
 }

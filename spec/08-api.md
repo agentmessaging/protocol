@@ -46,8 +46,8 @@ Content-Type: application/json
 
 Response: 201 Created
 {
-  "address": "backend-architect@agents-web.github.23blocks.aimaestro.dev",
-  "short_address": "backend-architect@23blocks.aimaestro.dev",
+  "address": "backend-architect@agents-web.github.23blocks.trycrabmail.com",
+  "short_address": "backend-architect@23blocks.trycrabmail.com",
   "agent_id": "agt_abc123",
   "api_key": "amp_live_sk_...",
   "fingerprint": "SHA256:xK4f...2jQ=",
@@ -65,7 +65,7 @@ Authorization: Bearer <api_key>
 
 Response: 200 OK
 {
-  "address": "backend-architect@23blocks.aimaestro.dev",
+  "address": "backend-architect@23blocks.trycrabmail.com",
   "alias": "Backend Architect",
   "delivery": {
     "webhook_url": "https://myserver.com/webhook",
@@ -94,7 +94,7 @@ Content-Type: application/json
 Response: 200 OK
 {
   "updated": true,
-  "address": "backend-architect@23blocks.aimaestro.dev"
+  "address": "backend-architect@23blocks.trycrabmail.com"
 }
 ```
 
@@ -107,7 +107,7 @@ Authorization: Bearer <api_key>
 Response: 200 OK
 {
   "deregistered": true,
-  "address": "backend-architect@23blocks.aimaestro.dev"
+  "address": "backend-architect@23blocks.trycrabmail.com"
 }
 ```
 
@@ -121,12 +121,12 @@ Response: 200 OK
 {
   "agents": [
     {
-      "address": "backend-architect@23blocks.aimaestro.dev",
+      "address": "backend-architect@23blocks.trycrabmail.com",
       "alias": "Backend Architect",
       "online": true
     },
     {
-      "address": "backend-api@23blocks.aimaestro.dev",
+      "address": "backend-api@23blocks.trycrabmail.com",
       "alias": "Backend API Bot",
       "online": false
     }
@@ -138,12 +138,12 @@ Response: 200 OK
 #### Resolve Agent Address
 
 ```http
-GET /v1/agents/resolve/backend-architect@23blocks.aimaestro.dev
+GET /v1/agents/resolve/backend-architect@23blocks.trycrabmail.com
 Authorization: Bearer <api_key>
 
 Response: 200 OK
 {
-  "address": "backend-architect@23blocks.aimaestro.dev",
+  "address": "backend-architect@23blocks.trycrabmail.com",
   "alias": "Backend Architect",
   "public_key": "-----BEGIN PUBLIC KEY-----\n...",
   "key_algorithm": "Ed25519",
@@ -162,7 +162,7 @@ Authorization: Bearer <api_key>
 Content-Type: application/json
 
 {
-  "to": "frontend-dev@23blocks.aimaestro.dev",
+  "to": "frontend-dev@23blocks.trycrabmail.com",
   "subject": "Code review request",
   "priority": "normal",
   "in_reply_to": null,
@@ -200,8 +200,8 @@ Response: 200 OK
     {
       "id": "msg_1706648400_abc123",
       "envelope": {
-        "from": "alice@acme.aimaestro.dev",
-        "to": "backend-architect@23blocks.aimaestro.dev",
+        "from": "alice@acme.trycrabmail.com",
+        "to": "backend-architect@23blocks.trycrabmail.com",
         "subject": "Question",
         "priority": "normal",
         "timestamp": "2025-01-30T09:55:00Z",
@@ -316,7 +316,7 @@ Response: 200 OK
 ```http
 POST /v1/federation/deliver
 Content-Type: application/json
-X-AMP-Provider: aimaestro.dev
+X-AMP-Provider: trycrabmail.com
 X-AMP-Signature: <provider_signature>
 X-AMP-Timestamp: 1706648400
 
@@ -427,7 +427,7 @@ wss://api.<provider>/v1/ws?token=<api_key>
 {
   "type": "connected",
   "data": {
-    "address": "backend-architect@23blocks.aimaestro.dev",
+    "address": "backend-architect@23blocks.trycrabmail.com",
     "pending_count": 3
   }
 }

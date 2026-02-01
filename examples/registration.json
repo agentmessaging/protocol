@@ -24,15 +24,15 @@
   },
 
   "response": {
-    "address": "backend-architect@agents-web.github.23blocks.aimaestro.dev",
-    "short_address": "backend-architect@23blocks.aimaestro.dev",
+    "address": "backend-architect@agents-web.github.23blocks.trycrabmail.com",
+    "short_address": "backend-architect@23blocks.trycrabmail.com",
     "local_name": "backend-architect",
     "agent_id": "agt_abc123def456",
     "tenant_id": "ten_23blocks",
     "api_key": "amp_live_sk_xxxxxxxxxxxxxxxxxxxxxxxxxxxx",
     "provider": {
-      "name": "aimaestro.dev",
-      "endpoint": "https://api.aimaestro.dev/v1"
+      "name": "trycrabmail.com",
+      "endpoint": "https://api.trycrabmail.com/v1"
     },
     "fingerprint": "SHA256:xK4f2jQaBcDeFgHiJkLmNoPqRsTuVwXyZ",
     "registered_at": "2025-01-30T10:00:00Z"

@@ -17,19 +17,19 @@ Every agent has a globally unique address:
 |-----------|-------------|---------|
 | `agent-name` | Unique identifier within scope | `backend-architect` |
 | `scope` | Tenant, optionally with platform/repo | `23blocks`, `agents-web.github.23blocks` |
-| `provider` | The messaging provider domain | `aimaestro.dev` |
+| `provider` | The messaging provider domain | `trycrabmail.com` |
 
 ### Examples
 
 ```
 # Simple (tenant-level agent)
-devops-bot@acme.aimaestro.dev
+devops-bot@acme.trycrabmail.com
 
 # Repo-scoped agent
-backend-architect@agents-web.github.23blocks.aimaestro.dev
+backend-architect@agents-web.github.23blocks.trycrabmail.com
 
 # Personal agent
-helper@juan.aimaestro.dev
+helper@juan.trycrabmail.com
 
 # Different provider
 reviewer@team.agents.bigcorp.io
@@ -60,13 +60,13 @@ The scope can have multiple levels for organization:
 
 ```
 Level 1: tenant
-  └── agent@23blocks.aimaestro.dev
+  └── agent@23blocks.trycrabmail.com
 
 Level 2: tenant + platform
-  └── agent@github.23blocks.aimaestro.dev
+  └── agent@github.23blocks.trycrabmail.com
 
 Level 3: tenant + platform + repo
-  └── agent@agents-web.github.23blocks.aimaestro.dev
+  └── agent@agents-web.github.23blocks.trycrabmail.com
 ```
 
 ### When to Use Each Level
@@ -101,7 +101,7 @@ NOUNS = ["panda", "falcon", "phoenix", "wolf", "dragon", ...]
 def generate_suffix():
     return f"{random.choice(ADJECTIVES)}-{random.choice(NOUNS)}"
 
-# Result: backend-architect-cosmic-panda@23blocks.aimaestro.dev
+# Result: backend-architect-cosmic-panda@23blocks.trycrabmail.com
 ```
 
 ## Short Addresses
@@ -110,12 +110,12 @@ Within the same tenant, agents MAY use short addresses:
 
 ```
 # Full address
-backend-architect@23blocks.aimaestro.dev
+backend-architect@23blocks.trycrabmail.com
 
 # Short address (within 23blocks tenant)
 backend-architect
 
-# Short with scope (within aimaestro.dev provider)
+# Short with scope (within trycrabmail.com provider)
 backend-architect@23blocks
 ```
 
@@ -138,13 +138,13 @@ Agents store their identity locally:
 ```json
 {
   "version": "1.0",
-  "address": "backend-architect@23blocks.aimaestro.dev",
+  "address": "backend-architect@23blocks.trycrabmail.com",
   "short_address": "backend-architect@23blocks",
   "agent_id": "agt_abc123def456",
   "tenant_id": "23blocks",
   "provider": {
-    "name": "aimaestro.dev",
-    "endpoint": "https://api.aimaestro.dev/v1"
+    "name": "trycrabmail.com",
+    "endpoint": "https://api.trycrabmail.com/v1"
   },
   "keys": {
     "algorithm": "Ed25519",
@@ -199,7 +199,7 @@ Authorization: Bearer <api_key>
 
 Response:
 {
-  "address": "backend-architect@23blocks.aimaestro.dev",
+  "address": "backend-architect@23blocks.trycrabmail.com",
   "alias": "Backend Architect",
   "public_key": "-----BEGIN PUBLIC KEY-----\n...",
   "key_algorithm": "Ed25519",
