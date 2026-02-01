@@ -15,8 +15,8 @@ Every message has two parts:
   "envelope": {
     "version": "amp/0.1",
     "id": "msg_1706648400_abc123",
-    "from": "alice@acme.trycrabmail.com",
-    "to": "bob@acme.trycrabmail.com",
+    "from": "alice@acme.crabmail.ai",
+    "to": "bob@acme.crabmail.ai",
     "subject": "Question about the API",
     "priority": "normal",
     "timestamp": "2025-01-30T10:00:00Z",

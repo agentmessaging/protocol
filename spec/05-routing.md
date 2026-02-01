@@ -45,7 +45,7 @@ Authorization: Bearer <api_key>
 Content-Type: application/json
 
 {
-  "to": "backend-architect@23blocks.trycrabmail.com",
+  "to": "backend-architect@23blocks.crabmail.ai",
   "subject": "Code review request",
   "priority": "normal",
   "payload": {
@@ -85,7 +85,7 @@ Content-Type: application/json
 Agents connect via WebSocket and authenticate with an in-band auth message:
 
 ```
-wss://api.trycrabmail.com/v1/ws
+wss://api.crabmail.ai/v1/ws
 ```
 
 > **Security note:** API keys MUST NOT be passed in the URL query string. Query strings appear in server logs, proxy logs, browser history, and referrer headers. Authentication is performed via the first WebSocket frame instead.
@@ -105,7 +105,7 @@ The server responds with either:
 {
   "type": "connected",
   "data": {
-    "address": "backend-architect@23blocks.trycrabmail.com",
+    "address": "backend-architect@23blocks.crabmail.ai",
     "pending_count": 3
   }
 }

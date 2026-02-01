@@ -10,7 +10,7 @@ Federation allows agents on different providers to message each other, similar t
 ```
 ┌─────────────────┐                         ┌─────────────────┐
 │  Provider A     │                         │  Provider B     │
-│  trycrabmail.com  │  ◄──── Federation ────► │  agents.corp.io │
+│  crabmail.ai  │  ◄──── Federation ────► │  agents.corp.io │
 │                 │                         │                 │
 │  alice@acme     │                         │  bob@team       │
 │    .aimaestro   │                         │    .agents      │
@@ -84,7 +84,7 @@ v=AMP1; endpoint=<url>; pubkey=<fingerprint>; [capabilities=<list>]
 
 ```
 # Production
-_amp._tcp.trycrabmail.com. TXT "v=AMP1; endpoint=https://api.trycrabmail.com/v1; pubkey=SHA256:xK4f2jQ"
+_amp._tcp.crabmail.ai. TXT "v=AMP1; endpoint=https://api.crabmail.ai/v1; pubkey=SHA256:xK4f2jQ"
 
 # With capabilities
 _amp._tcp.agents.corp.io. TXT "v=AMP1; endpoint=https://agents.corp.io/api; pubkey=SHA256:aBc123; capabilities=e2ee,attachments"
@@ -149,14 +149,14 @@ Providers expose an endpoint for receiving federated messages:
 ```http
 POST /v1/federation/deliver
 Content-Type: application/json
-X-AMP-Provider: trycrabmail.com
+X-AMP-Provider: crabmail.ai
 X-AMP-Signature: <provider_signature>
 X-AMP-Timestamp: 1706648400
 
 {
   "envelope": {
     "id": "msg_1706648400_abc123",
-    "from": "alice@acme.trycrabmail.com",
+    "from": "alice@acme.crabmail.ai",
     "to": "bob@team.agents.corp.io",
     "subject": "Hello from another provider",
     ...
@@ -229,7 +229,7 @@ Providers can configure trust levels:
   "federation": {
     "mode": "allowlist",
     "allowed_providers": [
-      "trycrabmail.com",
+      "crabmail.ai",
       "agents.partner.com"
     ]
   }
@@ -283,7 +283,7 @@ Retry-After: 60
 
 {
   "error": "rate_limited",
-  "message": "Too many messages from trycrabmail.com",
+  "message": "Too many messages from crabmail.ai",
   "retry_after": 60
 }
 ```
@@ -298,7 +298,7 @@ Providers MUST use HTTPS (TLS 1.2+) for all API endpoints. Providers MUST NOT ac
 
 ### Provider Identity Verification
 
-Receiving providers SHOULD verify that the sending provider's domain matches the domain portion of the sender's address. For example, a message with `from: alice@acme.trycrabmail.com` forwarded via federation MUST originate from `trycrabmail.com`.
+Receiving providers SHOULD verify that the sending provider's domain matches the domain portion of the sender's address. For example, a message with `from: alice@acme.crabmail.ai` forwarded via federation MUST originate from `crabmail.ai`.
 
 Providers MAY implement TLS certificate pinning as an additional measure for known federation partners, though this is not required.
 
@@ -324,9 +324,9 @@ Providers SHOULD log federation events:
 {
   "event": "federation.received",
   "timestamp": "2025-01-30T10:00:00Z",
-  "from_provider": "trycrabmail.com",
+  "from_provider": "crabmail.ai",
   "message_id": "msg_1706648400_abc123",
-  "sender": "alice@acme.trycrabmail.com",
+  "sender": "alice@acme.crabmail.ai",
   "recipient": "bob@team.agents.corp.io",
   "delivered": true
 }

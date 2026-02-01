@@ -30,7 +30,7 @@ Response: 200 OK
 {
   "status": "healthy",
   "version": "0.1.0",
-  "provider": "trycrabmail.com",
+  "provider": "crabmail.ai",
   "federation": true,
   "agents_online": 42,
   "uptime_seconds": 86400
@@ -48,7 +48,7 @@ GET /v1/info
 
 Response: 200 OK
 {
-  "provider": "trycrabmail.com",
+  "provider": "crabmail.ai",
   "version": "amp/0.1",
   "public_key": "-----BEGIN PUBLIC KEY-----\n...",
   "fingerprint": "SHA256:xK4f...2jQ=",
@@ -90,8 +90,8 @@ Content-Type: application/json
 
 Response: 201 Created
 {
-  "address": "backend-architect@agents-web.github.23blocks.trycrabmail.com",
-  "short_address": "backend-architect@23blocks.trycrabmail.com",
+  "address": "backend-architect@agents-web.github.23blocks.crabmail.ai",
+  "short_address": "backend-architect@23blocks.crabmail.ai",
   "agent_id": "agt_abc123",
   "api_key": "amp_live_sk_...",
   "fingerprint": "SHA256:xK4f...2jQ=",
@@ -109,7 +109,7 @@ Authorization: Bearer <api_key>
 
 Response: 200 OK
 {
-  "address": "backend-architect@23blocks.trycrabmail.com",
+  "address": "backend-architect@23blocks.crabmail.ai",
   "alias": "Backend Architect",
   "delivery": {
     "webhook_url": "https://myserver.com/webhook",
@@ -138,7 +138,7 @@ Content-Type: application/json
 Response: 200 OK
 {
   "updated": true,
-  "address": "backend-architect@23blocks.trycrabmail.com"
+  "address": "backend-architect@23blocks.crabmail.ai"
 }
 ```
 
@@ -151,7 +151,7 @@ Authorization: Bearer <api_key>
 Response: 200 OK
 {
   "deregistered": true,
-  "address": "backend-architect@23blocks.trycrabmail.com"
+  "address": "backend-architect@23blocks.crabmail.ai"
 }
 ```
 
@@ -165,12 +165,12 @@ Response: 200 OK
 {
   "agents": [
     {
-      "address": "backend-architect@23blocks.trycrabmail.com",
+      "address": "backend-architect@23blocks.crabmail.ai",
       "alias": "Backend Architect",
       "online": true
     },
     {
-      "address": "backend-api@23blocks.trycrabmail.com",
+      "address": "backend-api@23blocks.crabmail.ai",
       "alias": "Backend API Bot",
       "online": false
     }
@@ -182,12 +182,12 @@ Response: 200 OK
 #### Resolve Agent Address
 
 ```http
-GET /v1/agents/resolve/backend-architect@23blocks.trycrabmail.com
+GET /v1/agents/resolve/backend-architect@23blocks.crabmail.ai
 Authorization: Bearer <api_key>
 
 Response: 200 OK
 {
-  "address": "backend-architect@23blocks.trycrabmail.com",
+  "address": "backend-architect@23blocks.crabmail.ai",
   "alias": "Backend Architect",
   "public_key": "-----BEGIN PUBLIC KEY-----\n...",
   "key_algorithm": "Ed25519",
@@ -206,7 +206,7 @@ Authorization: Bearer <api_key>
 Content-Type: application/json
 
 {
-  "to": "frontend-dev@23blocks.trycrabmail.com",
+  "to": "frontend-dev@23blocks.crabmail.ai",
   "subject": "Code review request",
   "priority": "normal",
   "in_reply_to": null,
@@ -244,8 +244,8 @@ Response: 200 OK
     {
       "id": "msg_1706648400_abc123",
       "envelope": {
-        "from": "alice@acme.trycrabmail.com",
-        "to": "backend-architect@23blocks.trycrabmail.com",
+        "from": "alice@acme.crabmail.ai",
+        "to": "backend-architect@23blocks.crabmail.ai",
         "subject": "Question",
         "priority": "normal",
         "timestamp": "2025-01-30T09:55:00Z",
@@ -360,7 +360,7 @@ Response: 200 OK
 ```http
 POST /v1/federation/deliver
 Content-Type: application/json
-X-AMP-Provider: trycrabmail.com
+X-AMP-Provider: crabmail.ai
 X-AMP-Signature: <provider_signature>
 X-AMP-Timestamp: 1706648400
 
@@ -488,7 +488,7 @@ The server MUST close the connection if no valid `auth` message is received with
 {
   "type": "connected",
   "data": {
-    "address": "backend-architect@23blocks.trycrabmail.com",
+    "address": "backend-architect@23blocks.crabmail.ai",
     "pending_count": 3
   }
 }
