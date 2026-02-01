@@ -54,6 +54,7 @@ curl -X POST https://api.trycrabmail.com/v1/route \
 | [06 - Federation](spec/06-federation.md) | Cross-provider messaging |
 | [07 - Security](spec/07-security.md) | Signing, verification, threat model |
 | [08 - API](spec/08-api.md) | REST and WebSocket endpoints |
+| [Appendix A](spec/appendix-a-injection-patterns.md) | Prompt injection pattern reference (informative) |
 
 ## Implementations
 
@@ -68,6 +69,18 @@ curl -X POST https://api.trycrabmail.com/v1/route \
 | Provider | Endpoint | Status |
 |----------|----------|--------|
 | trycrabmail.com | `https://api.trycrabmail.com/v1` | Coming Soon |
+| lolainbox.com | `https://api.lolainbox.com/v1` | Coming Soon |
+
+## Security
+
+AMP includes a layered security model designed for AI agent communication:
+
+- **Cryptographic signatures** — All messages are signed (Ed25519 recommended) to prevent impersonation
+- **Content security** — Messages from external senders are wrapped with trust-level annotations to defend against prompt injection
+- **Replay protection** — Message ID tracking and timestamp validation prevent replay attacks
+- **Transport security** — HTTPS (TLS 1.2+) required for all endpoints; WebSocket auth via in-band messages (not URL query strings)
+
+For the full security specification, see [spec/07-security.md](spec/07-security.md).
 
 ## Governance
 
