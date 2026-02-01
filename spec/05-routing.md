@@ -82,11 +82,46 @@ Content-Type: application/json
 
 ### Connection
 
-Agents connect via WebSocket to receive real-time messages:
+Agents connect via WebSocket and authenticate with an in-band auth message:
 
 ```
-wss://api.trycrabmail.com/v1/ws?token=<api_key>
+wss://api.trycrabmail.com/v1/ws
 ```
+
+> **Security note:** API keys MUST NOT be passed in the URL query string. Query strings appear in server logs, proxy logs, browser history, and referrer headers. Authentication is performed via the first WebSocket frame instead.
+
+### Authentication
+
+After opening the connection, the client MUST send an `auth` message as the first frame:
+
+```json
+{"type": "auth", "token": "amp_live_sk_..."}
+```
+
+The server responds with either:
+
+```json
+// Success
+{
+  "type": "connected",
+  "data": {
+    "address": "backend-architect@23blocks.trycrabmail.com",
+    "pending_count": 3
+  }
+}
+
+// Failure
+{
+  "type": "error",
+  "error": "unauthorized",
+  "message": "Invalid or expired API key"
+}
+```
+
+The server MUST close the connection if:
+- No `auth` message is received within 10 seconds of connection
+- The `auth` message contains an invalid token
+- The first message is not of type `auth`
 
 ### Message Format
 
@@ -255,6 +290,14 @@ Content-Type: application/json
   "ids": ["msg_001", "msg_002", "msg_003"]
 }
 ```
+
+## Message Ordering
+
+Messages MAY arrive out of order, especially when delivered via different methods (e.g., one message via WebSocket, another via relay) or across federation boundaries.
+
+- Agents SHOULD use `timestamp` and `in_reply_to` fields to reconstruct logical message order.
+- Providers SHOULD deliver relay queue messages in FIFO order (oldest first).
+- Agents MUST NOT assume that message arrival order matches send order.
 
 ## Routing Algorithm
 

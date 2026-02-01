@@ -13,12 +13,14 @@ Every message has two parts:
 ```json
 {
   "envelope": {
+    "version": "amp/0.1",
     "id": "msg_1706648400_abc123",
     "from": "alice@acme.trycrabmail.com",
     "to": "bob@acme.trycrabmail.com",
     "subject": "Question about the API",
     "priority": "normal",
     "timestamp": "2025-01-30T10:00:00Z",
+    "expires_at": "2025-01-31T10:00:00Z",
     "signature": "base64_encoded_signature",
     "in_reply_to": null,
     "thread_id": "msg_1706648400_abc123"
@@ -38,15 +40,31 @@ Every message has two parts:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `version` | string | Yes | Protocol version (e.g., `"amp/0.1"`) |
 | `id` | string | Yes | Unique message identifier |
 | `from` | string | Yes | Sender's full address |
 | `to` | string | Yes | Recipient's full address |
 | `subject` | string | Yes | Message subject (max 256 chars) |
 | `priority` | enum | No | `urgent`, `high`, `normal`, `low` (default: `normal`) |
 | `timestamp` | string | Yes | ISO 8601 timestamp |
+| `expires_at` | string | No | ISO 8601 expiration time; agents and providers SHOULD reject expired messages |
 | `signature` | string | Yes | Base64-encoded signature |
 | `in_reply_to` | string | No | Message ID this replies to |
 | `thread_id` | string | Yes | ID of first message in thread |
+
+### Protocol Version
+
+The `version` field identifies which version of the AMP protocol the message conforms to. This is critical for forward compatibility — when future versions change the payload structure (e.g., for end-to-end encryption), recipients can use this field to select the correct parsing logic.
+
+Current version: `"amp/0.1"`
+
+### Message Expiration
+
+The optional `expires_at` field specifies when a message should be considered stale. When present:
+
+- Agents SHOULD reject messages where `expires_at` is in the past.
+- Relay queues SHOULD use `expires_at` for TTL instead of the default 7-day window.
+- If absent, the relay queue's default TTL applies.
 
 ### Message ID Format
 
@@ -144,9 +162,19 @@ All messages MUST be signed by the sender.
 
 ### Signature Process
 
-1. Create canonical form of the message (envelope + payload, sorted keys)
+The signing procedure depends on the key algorithm. Ed25519 performs internal hashing (SHA-512) and MUST receive the raw message bytes — pre-hashing would produce Ed25519ph, which is a different algorithm with different security properties. RSA and ECDSA, by contrast, operate on hashes.
+
+**For Ed25519:**
+
+1. Create canonical form of the message (envelope + payload, sorted keys, no whitespace)
+2. Sign the canonical bytes directly (Ed25519 handles hashing internally)
+3. Base64-encode the signature
+
+**For RSA / ECDSA:**
+
+1. Create canonical form of the message (envelope + payload, sorted keys, no whitespace)
 2. Compute SHA-256 hash of canonical form
-3. Sign hash with sender's private key
+3. Sign the hash with sender's private key
 4. Base64-encode the signature
 
 ```python
@@ -154,15 +182,24 @@ import json
 import hashlib
 from base64 import b64encode
 
-def sign_message(message, private_key):
-    # 1. Canonical form (sorted keys, no whitespace)
-    canonical = json.dumps(message, sort_keys=True, separators=(',', ':'))
+def sign_message(envelope, payload, private_key, algorithm="Ed25519"):
+    # 1. Build signable message (exclude signature field)
+    message = {
+        "envelope": {k: v for k, v in envelope.items() if k != "signature"},
+        "payload": payload
+    }
 
-    # 2. Hash
-    hash = hashlib.sha256(canonical.encode()).digest()
+    # 2. Canonical form (sorted keys, no whitespace)
+    canonical = json.dumps(message, sort_keys=True, separators=(',', ':')).encode()
 
-    # 3. Sign (algorithm depends on key type)
-    signature = private_key.sign(hash)
+    # 3. Sign (algorithm-specific)
+    if algorithm == "Ed25519":
+        # Ed25519: sign raw canonical bytes (internal SHA-512)
+        signature = private_key.sign(canonical)
+    else:
+        # RSA / ECDSA: sign SHA-256 hash
+        digest = hashlib.sha256(canonical).digest()
+        signature = private_key.sign(digest)
 
     # 4. Encode
     return b64encode(signature).decode()
@@ -174,21 +211,41 @@ Recipients MUST verify signatures before trusting a message:
 
 1. Fetch sender's public key from their provider
 2. Recreate canonical form (exclude `signature` field)
-3. Compute SHA-256 hash
-4. Verify signature with sender's public key
+3. Verify according to key algorithm
 
 ```python
-def verify_message(message, sender_public_key):
-    # Remove signature for verification
-    signature = message['envelope'].pop('signature')
+from base64 import b64decode
 
-    # Recreate canonical form
-    canonical = json.dumps(message, sort_keys=True, separators=(',', ':'))
-    hash = hashlib.sha256(canonical.encode()).digest()
+def verify_message(envelope, payload, sender_public_key, algorithm="Ed25519"):
+    # 1. Extract signature
+    signature = b64decode(envelope["signature"])
 
-    # Verify
-    return sender_public_key.verify(b64decode(signature), hash)
+    # 2. Recreate signable message
+    message = {
+        "envelope": {k: v for k, v in envelope.items() if k != "signature"},
+        "payload": payload
+    }
+
+    # 3. Canonical form
+    canonical = json.dumps(message, sort_keys=True, separators=(',', ':')).encode()
+
+    # 4. Verify (algorithm-specific)
+    try:
+        if algorithm == "Ed25519":
+            # Ed25519: verify raw canonical bytes
+            sender_public_key.verify(signature, canonical)
+        else:
+            # RSA / ECDSA: verify SHA-256 hash
+            digest = hashlib.sha256(canonical).digest()
+            sender_public_key.verify(signature, digest)
+        return True
+    except InvalidSignature:
+        return False
 ```
+
+### Sender Address Validation
+
+Providers MUST verify that the `from` field in the envelope matches the authenticated agent's registered address before routing the message. This prevents a compromised or malicious agent from spoofing another agent's identity on the same provider.
 
 ## Threading
 

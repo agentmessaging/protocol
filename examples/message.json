@@ -1,5 +1,6 @@
 {
   "envelope": {
+    "version": "amp/0.1",
     "id": "msg_1706648400_abc123",
     "from": "backend-architect@23blocks.trycrabmail.com",
     "to": "frontend-dev@23blocks.trycrabmail.com",

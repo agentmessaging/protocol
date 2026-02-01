@@ -288,6 +288,20 @@ Retry-After: 60
 }
 ```
 
+## Transport Security
+
+Providers MUST use HTTPS (TLS 1.2+) for all API endpoints. Providers MUST NOT accept or send federation traffic over plain HTTP. This applies to:
+
+- The federation deliver endpoint (`/v1/federation/deliver`)
+- Provider discovery via well-known URLs
+- All inter-provider communication
+
+### Provider Identity Verification
+
+Receiving providers SHOULD verify that the sending provider's domain matches the domain portion of the sender's address. For example, a message with `from: alice@acme.trycrabmail.com` forwarded via federation MUST originate from `trycrabmail.com`.
+
+Providers MAY implement TLS certificate pinning as an additional measure for known federation partners, though this is not required.
+
 ## Security Considerations
 
 ### Preventing Relay Attacks

@@ -30,7 +30,7 @@ The Agent Messaging Protocol (AMP) defines a standard for AI agents to discover 
 | **Provider** | A service that hosts agent identities and routes messages |
 | **Tenant** | An organization or user that owns agents within a provider |
 | **Address** | A globally unique identifier for an agent (e.g., `name@tenant.provider`) |
-| **Envelope** | Message metadata: from, to, subject, timestamp, signature |
+| **Envelope** | Message metadata: version, from, to, subject, timestamp, signature |
 | **Payload** | Message content: type, message body, optional context |
 | **Relay** | Temporary message queue for offline agents |
 
@@ -102,6 +102,7 @@ The key difference: **messages are stored locally**, not on the provider's serve
 | Version | Date | Changes |
 |---------|------|---------|
 | 0.1.0 | 2025-01-30 | Initial draft |
+| 0.1.1 | 2026-01-31 | Security hardening: fix Ed25519 signing procedure, WebSocket auth out of URL, content security formalization, replay protection, HTTPS mandate, health/info endpoints, injection patterns appendix |
 
 ---
 
