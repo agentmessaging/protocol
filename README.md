@@ -80,6 +80,12 @@ We welcome contributions! Please see:
 - [Start a discussion](https://github.com/agentmessaging/protocol/discussions) for ideas
 - [Submit a PR](https://github.com/agentmessaging/protocol/pulls) for improvements
 
+## Security
+
+Found a vulnerability? Please report it responsibly:
+- **Email:** security@agentmessaging.org
+- **Policy:** [SECURITY.md](SECURITY.md)
+
 ## License
 
 Apache 2.0 - See [LICENSE](LICENSE)
@@ -87,5 +93,9 @@ Apache 2.0 - See [LICENSE](LICENSE)
 ---
 
 **Website:** [agentmessaging.org](https://agentmessaging.org)
+
+**X:** [@agentmessaging](https://x.com/agentmessaging)
+
+**Email:** hello@agentmessaging.org
 
 **Maintained by:** [23blocks](https://23blocks.com)
