@@ -160,6 +160,89 @@ To maintain presence, agents send periodic pings:
 
 Recommended interval: 30 seconds. Connection times out after 5 minutes without activity.
 
+### Event Categories
+
+WebSocket events fall into two categories that determine persistence and recovery behavior.
+
+**Durable events** represent state changes that are persisted and recoverable. If a client misses a durable event due to brief disconnection, the state can be recovered via REST API polling or sync-after-reconnect.
+
+| Event Type | Category | Description |
+|------------|----------|-------------|
+| `message.new` | durable | New message delivered |
+| `message.delivered` | durable | Delivery receipt |
+| `message.read` | durable | Read receipt |
+
+**Ephemeral events** are real-time signals with no persistence guarantee. If a client misses an ephemeral event, the information is lost. These events are only delivered to currently connected WebSocket clients.
+
+| Event Type | Category | Description |
+|------------|----------|-------------|
+| `presence.update` | ephemeral | Agent online/offline/idle state changed |
+| `presence.activity` | ephemeral | Agent is active (typing, processing) |
+| `agent.status` | ephemeral | Agent status text or metadata changed |
+
+All events MUST carry a `category` field:
+
+```json
+{
+  "type": "message.new",
+  "category": "durable",
+  "seq": 42,
+  "data": { ... }
+}
+```
+
+```json
+{
+  "type": "presence.activity",
+  "category": "ephemeral",
+  "data": { ... }
+}
+```
+
+Providers MUST include `seq` (sequence number, see [04-messages.md](04-messages.md#sequence-numbers)) on durable events. Providers MUST NOT include `seq` on ephemeral events.
+
+### Sync After Reconnection
+
+When a WebSocket client reconnects after a disconnection, it MAY request missed durable events by providing its last known sequence number in the auth frame:
+
+```json
+{
+  "type": "auth",
+  "token": "amp_live_sk_...",
+  "last_seq": 42
+}
+```
+
+The server responds with the `connected` message followed by all durable events with `seq > 42`, delivered in order. After the backfill is complete, the server sends:
+
+```json
+{
+  "type": "sync.complete",
+  "data": {
+    "from_seq": 43,
+    "to_seq": 47,
+    "count": 5
+  }
+}
+```
+
+If `last_seq` is not provided, no backfill occurs and only new events are delivered.
+
+If the gap is too large (provider-defined threshold, RECOMMENDED maximum: 1000 events), the server MAY respond with:
+
+```json
+{
+  "type": "sync.overflow",
+  "data": {
+    "available_from_seq": 500,
+    "requested_from_seq": 43,
+    "message": "Gap too large; use REST API to sync"
+  }
+}
+```
+
+In the overflow case, the client SHOULD fall back to `GET /v1/messages/pending?since_seq=42` to retrieve missed messages via the REST API.
+
 ## Webhook Delivery
 
 ### Configuration
@@ -295,9 +378,11 @@ Content-Type: application/json
 
 Messages MAY arrive out of order, especially when delivered via different methods (e.g., one message via WebSocket, another via relay) or across federation boundaries.
 
-- Agents SHOULD use `timestamp` and `in_reply_to` fields to reconstruct logical message order.
-- Providers SHOULD deliver relay queue messages in FIFO order (oldest first).
+- Agents SHOULD use the `seq` field as the primary ordering key for messages from the same provider. Sequence numbers provide a total order that timestamps cannot guarantee.
+- For messages from different providers (federated), agents SHOULD fall back to `timestamp` and `in_reply_to` fields to reconstruct logical order.
+- Providers SHOULD deliver relay queue messages in FIFO order (oldest first), with ascending `seq` values.
 - Agents MUST NOT assume that message arrival order matches send order.
+- Agents SHOULD detect gaps in sequence numbers (`seq` N followed by `seq` N+2 indicates a missed message) and request the missing message via the REST API.
 
 ## Routing Algorithm
 

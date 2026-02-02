@@ -243,6 +243,7 @@ Response: 200 OK
   "messages": [
     {
       "id": "msg_1706648400_abc123",
+      "seq": 42,
       "envelope": {
         "from": "alice@acme.trycrabmail.com",
         "to": "backend-architect@23blocks.trycrabmail.com",
@@ -261,7 +262,40 @@ Response: 200 OK
     }
   ],
   "count": 1,
-  "remaining": 0
+  "remaining": 0,
+  "latest_seq": 42
+}
+```
+
+#### Sync by Sequence Number
+
+Agents can request messages since a known sequence number for efficient sync after reconnection:
+
+```http
+GET /v1/messages/pending?since_seq=40&limit=50
+Authorization: Bearer <api_key>
+
+Response: 200 OK
+{
+  "messages": [
+    {
+      "id": "msg_1706648400_abc123",
+      "seq": 41,
+      "envelope": { ... },
+      "payload": { ... },
+      "queued_at": "..."
+    },
+    {
+      "id": "msg_1706648401_def456",
+      "seq": 42,
+      "envelope": { ... },
+      "payload": { ... },
+      "queued_at": "..."
+    }
+  ],
+  "count": 2,
+  "latest_seq": 42,
+  "has_more": false
 }
 ```
 
@@ -394,9 +428,11 @@ wss://api.<provider>/v1/ws
 
 ```typescript
 // Authenticate (MUST be first message)
+// Optional last_seq for sync-after-reconnect (see 05-routing.md)
 {
   "type": "auth",
-  "token": "amp_live_sk_..."
+  "token": "amp_live_sk_...",
+  "last_seq": 42
 }
 
 // Ping (heartbeat)
@@ -428,9 +464,11 @@ wss://api.<provider>/v1/ws
   "timestamp": "2025-01-30T10:00:00Z"
 }
 
-// New message
+// New message (durable event — includes seq)
 {
   "type": "message.new",
+  "category": "durable",
+  "seq": 43,
   "data": {
     "id": "msg_1706648400_abc123",
     "envelope": { ... },
@@ -438,9 +476,11 @@ wss://api.<provider>/v1/ws
   }
 }
 
-// Message delivered (when you send)
+// Message delivered (durable — when you send)
 {
   "type": "message.delivered",
+  "category": "durable",
+  "seq": 44,
   "data": {
     "id": "msg_1706648400_abc123",
     "to": "recipient@tenant.provider",
@@ -449,12 +489,34 @@ wss://api.<provider>/v1/ws
   }
 }
 
-// Message read (read receipt)
+// Message read (durable — read receipt)
 {
   "type": "message.read",
+  "category": "durable",
+  "seq": 45,
   "data": {
     "id": "msg_1706648400_abc123",
     "read_at": "2025-01-30T10:05:00Z"
+  }
+}
+
+// Sync complete (after reconnection backfill)
+{
+  "type": "sync.complete",
+  "data": {
+    "from_seq": 43,
+    "to_seq": 47,
+    "count": 5
+  }
+}
+
+// Sync overflow (gap too large for WebSocket backfill)
+{
+  "type": "sync.overflow",
+  "data": {
+    "available_from_seq": 500,
+    "requested_from_seq": 43,
+    "message": "Gap too large; use REST API to sync"
   }
 }
 
@@ -498,6 +560,59 @@ The server MUST close the connection if no valid `auth` message is received with
   "type": "error",
   "error": "unauthorized",
   "message": "Invalid or expired API key"
+}
+```
+
+## Schema Validation
+
+Providers MUST validate all incoming requests against the message schema before processing. Invalid requests MUST be rejected with a `400` status code and a descriptive error identifying the invalid field.
+
+### Machine-Readable Schema
+
+Providers MUST serve a machine-readable API schema at:
+
+- `GET /v1/openapi.json` — OpenAPI 3.0+ specification (JSON format)
+- `GET /v1/openapi.yaml` — OpenAPI 3.0+ specification (YAML format)
+
+These endpoints require no authentication. The schema MUST include all endpoint definitions with request/response schemas, message envelope and payload schemas, and error response schemas.
+
+### Message Validation Rules
+
+Providers MUST validate the following fields on all inbound messages submitted via `POST /v1/route`:
+
+| Field | Validation Rule |
+|-------|-----------------|
+| `to` | Valid AMP address format (see [02-identity.md](02-identity.md)) |
+| `subject` | Non-empty, max 256 characters |
+| `priority` | One of: `urgent`, `high`, `normal`, `low` (if present) |
+| `payload.type` | Non-empty string |
+| `payload.message` | Non-empty string, max 64 KB |
+| `payload.context` | Valid JSON object (if present), max 256 KB |
+| Total message size | Max 512 KB |
+
+Providers MUST validate the following on delivered messages:
+
+| Field | Validation Rule |
+|-------|-----------------|
+| `envelope.version` | Supported AMP version string (e.g., `"amp/0.1"`) |
+| `envelope.id` | Matches `msg_<digits>_<alphanumeric>` pattern |
+| `envelope.from` | Valid AMP address |
+| `envelope.timestamp` | Valid ISO 8601 datetime |
+| `envelope.signature` | Valid Base64 string |
+
+Providers SHOULD reject messages with unknown top-level fields in the envelope to prevent schema drift across the federation. Unknown fields in `payload.context` MUST be preserved (per spec [04-messages.md](04-messages.md)).
+
+### Validation Error Response
+
+```json
+{
+  "error": "invalid_field",
+  "message": "Subject exceeds maximum length of 256 characters",
+  "field": "subject",
+  "details": {
+    "max_length": 256,
+    "actual_length": 312
+  }
 }
 ```
 

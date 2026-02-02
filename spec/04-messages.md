@@ -22,6 +22,7 @@ Every message has two parts:
     "timestamp": "2025-01-30T10:00:00Z",
     "expires_at": "2025-01-31T10:00:00Z",
     "signature": "base64_encoded_signature",
+    "seq": 42,
     "in_reply_to": null,
     "thread_id": "msg_1706648400_abc123"
   },
@@ -49,6 +50,7 @@ Every message has two parts:
 | `timestamp` | string | Yes | ISO 8601 timestamp |
 | `expires_at` | string | No | ISO 8601 expiration time; agents and providers SHOULD reject expired messages |
 | `signature` | string | Yes | Base64-encoded signature |
+| `seq` | integer | Conditional | Provider-assigned sequence number (see Sequence Numbers) |
 | `in_reply_to` | string | No | Message ID this replies to |
 | `thread_id` | string | Yes | ID of first message in thread |
 
@@ -65,6 +67,33 @@ The optional `expires_at` field specifies when a message should be considered st
 - Agents SHOULD reject messages where `expires_at` is in the past.
 - Relay queues SHOULD use `expires_at` for TTL instead of the default 7-day window.
 - If absent, the relay queue's default TTL applies.
+
+### Sequence Numbers
+
+Providers MUST assign a monotonically increasing integer sequence number (`seq`) to each message delivered to an agent. Sequence numbers provide total ordering, gap detection, and efficient sync — capabilities that timestamps alone cannot guarantee.
+
+Sequence numbers are:
+
+- **Per-agent** — Each agent has its own independent sequence counter starting at 1
+- **Monotonically increasing** — `seq(N+1) > seq(N)`, guaranteed
+- **Gapless** — No sequence numbers are skipped under normal operation
+- **Provider-assigned** — The sender does not set this; the delivering provider assigns it at delivery time
+
+Sequence numbers enable:
+
+1. **Total ordering** — Messages are ordered by `seq`, not `timestamp` (timestamps can collide or drift across providers)
+2. **Gap detection** — If an agent receives seq 10 then seq 12, seq 11 was missed
+3. **Efficient sync** — "Give me all messages with `seq` > 42" is a single query
+
+The `seq` field is added by the provider at delivery time. It is NOT part of the signed envelope (since the sender doesn't know the recipient's current sequence). Providers MUST exclude `seq` from signature verification.
+
+Providers MUST include `seq` in:
+
+- WebSocket `message.new` events
+- REST `GET /v1/messages/pending` responses
+- Delivery receipts (`message.delivered`) and read receipts (`message.read`)
+
+The `seq` field is **conditional**: it is required when the message is delivered to a recipient, but absent when the message is first submitted by the sender via `POST /v1/route`.
 
 ### Message ID Format
 
