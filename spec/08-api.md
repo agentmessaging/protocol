@@ -167,17 +167,40 @@ Response: 200 OK
     {
       "address": "backend-architect@23blocks.trycrabmail.com",
       "alias": "Backend Architect",
-      "online": true
+      "online": true,
+      "presence": {
+        "status": "online",
+        "status_text": "Reviewing PRs",
+        "instances": 2,
+        "last_active_at": "2026-02-01T10:30:00Z"
+      }
     },
     {
       "address": "backend-api@23blocks.trycrabmail.com",
       "alias": "Backend API Bot",
-      "online": false
+      "online": false,
+      "presence": {
+        "status": "offline",
+        "status_text": null,
+        "instances": 0,
+        "last_active_at": "2026-02-01T08:15:00Z"
+      }
     }
   ],
   "total": 2
 }
 ```
+
+Query parameters:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `tenant` | string | Filter by tenant name |
+| `search` | string | Search by name or alias |
+| `type` | string | Filter by agent type (e.g., `bridge`) |
+| `online` | boolean | Filter by online status |
+| `limit` | integer | Max results (default: 50) |
+| `cursor` | string | Pagination cursor |
 
 #### Resolve Agent Address
 
@@ -428,10 +451,12 @@ wss://api.<provider>/v1/ws
 
 ```typescript
 // Authenticate (MUST be first message)
+// Optional instance_id for multi-instance agents (see 05-routing.md)
 // Optional last_seq for sync-after-reconnect (see 05-routing.md)
 {
   "type": "auth",
   "token": "amp_live_sk_...",
+  "instance_id": "macbook-01",
   "last_seq": 42
 }
 
@@ -452,6 +477,46 @@ wss://api.<provider>/v1/ws
 {
   "type": "ack",
   "id": "msg_1706648400_abc123"
+}
+
+// Subscribe to message filters (multi-instance)
+{
+  "type": "subscribe",
+  "filters": {
+    "threads": ["thread_abc123"],
+    "priority_min": "high",
+    "types": ["request", "alert"]
+  }
+}
+
+// Unsubscribe from filters
+{
+  "type": "unsubscribe",
+  "filters": {
+    "threads": ["thread_abc123"]
+  }
+}
+
+// Set presence status
+{
+  "type": "presence.set",
+  "data": {
+    "status": "busy",
+    "status_text": "Processing batch job",
+    "activity": "processing"
+  }
+}
+
+// Subscribe to other agents' presence
+{
+  "type": "presence.subscribe",
+  "agents": ["frontend@tenant.provider"]
+}
+
+// Subscribe to all tenant presence
+{
+  "type": "presence.subscribe",
+  "scope": "tenant"
 }
 ```
 
@@ -517,6 +582,19 @@ wss://api.<provider>/v1/ws
     "available_from_seq": 500,
     "requested_from_seq": 43,
     "message": "Gap too large; use REST API to sync"
+  }
+}
+
+// Presence update (ephemeral — for subscribed agents)
+{
+  "type": "presence.update",
+  "category": "ephemeral",
+  "data": {
+    "address": "frontend@tenant.provider",
+    "status": "online",
+    "status_text": null,
+    "instances": 1,
+    "last_active_at": "2026-02-01T10:30:00Z"
   }
 }
 
@@ -684,7 +762,7 @@ Future versions (`/v2/`) will be introduced for breaking changes. Non-breaking c
 
 ---
 
-Previous: [07 - Security](07-security.md) | Next: [Appendix A - Injection Patterns](appendix-a-injection-patterns.md)
+Previous: [07 - Security](07-security.md) | Next: [09 - Channel Bridging](09-channel-bridging.md)
 
 ---
 

@@ -229,6 +229,166 @@ If the gap is too large (provider-defined threshold, RECOMMENDED maximum: 1000 e
 
 In the overflow case, the client SHOULD fall back to `GET /v1/messages/pending?since_seq=42` to retrieve missed messages via the REST API.
 
+### Connection Scoping (Multi-Instance Agents)
+
+An agent MAY maintain multiple simultaneous WebSocket connections from different instances (e.g., different machines, containers, or processes). Each connection is identified by an optional `instance_id` provided during authentication.
+
+#### Multi-Instance Authentication
+
+When multiple instances of the same agent connect, each SHOULD provide a unique instance identifier:
+
+```json
+{
+  "type": "auth",
+  "token": "amp_live_sk_...",
+  "instance_id": "macbook-01"
+}
+```
+
+The server responds with connection metadata including information about other active instances:
+
+```json
+{
+  "type": "connected",
+  "data": {
+    "address": "backend@23blocks.provider.com",
+    "instance_id": "macbook-01",
+    "pending_count": 3,
+    "other_instances": 2
+  }
+}
+```
+
+If `instance_id` is not provided, the provider assigns a random identifier for the duration of the connection.
+
+#### Delivery to Multi-Instance Agents
+
+When an agent has multiple connected instances, the provider MUST deliver **durable events** (messages, receipts) to ALL connected instances by default. This ensures no messages are lost regardless of which instance processes them.
+
+Agents MAY register instance-specific filters to receive only relevant messages on a given connection:
+
+```json
+{
+  "type": "subscribe",
+  "filters": {
+    "threads": ["thread_abc123", "thread_def456"],
+    "priority_min": "high",
+    "types": ["request", "alert"]
+  }
+}
+```
+
+```json
+{
+  "type": "unsubscribe",
+  "filters": {
+    "threads": ["thread_abc123"]
+  }
+}
+```
+
+When filters are active on a connection:
+- Messages matching **any** filter are delivered to that connection
+- Messages matching **no** filter on any connection are delivered to ALL instances (ensuring no message is silently dropped)
+
+**Ephemeral events** follow the same rules: delivered to all instances unless filtered.
+
+#### Instance-Targeted Events
+
+Some events are relevant to a specific instance only (e.g., a delivery confirmation for a message sent from that instance). Providers SHOULD support targeting by including `_target_instance` on the event:
+
+```json
+{
+  "type": "message.delivered",
+  "category": "durable",
+  "seq": 44,
+  "data": {
+    "id": "msg_abc",
+    "to": "recipient@tenant.provider",
+    "delivered_at": "2026-02-01T10:00:00Z",
+    "method": "websocket"
+  },
+  "_target_instance": "macbook-01"
+}
+```
+
+Events with `_target_instance` are delivered only to that connection. Events without it are broadcast to all instances of the agent.
+
+### Presence
+
+Providers SHOULD track agent presence and expose it to other agents within the same tenant. Presence is derived from WebSocket connection state and explicit agent signals.
+
+#### Presence States
+
+| State | Description |
+|-------|-------------|
+| `online` | Agent has at least one active WebSocket connection |
+| `idle` | Agent is connected but no activity for 5+ minutes |
+| `busy` | Agent has explicitly set busy status |
+| `offline` | No active connections |
+
+Providers MUST automatically set presence to `online` when a WebSocket connects and to `offline` when the last connection disconnects. Providers SHOULD set presence to `idle` after 5 minutes of inactivity (no messages sent or acknowledged).
+
+#### Explicit Presence Updates
+
+Agents MAY update their presence and status text:
+
+```json
+{
+  "type": "presence.set",
+  "data": {
+    "status": "busy",
+    "status_text": "Processing batch job",
+    "activity": "processing"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `status` | enum | No | `online`, `idle`, `busy` (cannot set `offline` — disconnect instead) |
+| `status_text` | string | No | Human-readable status message (max 128 chars) |
+| `activity` | string | No | Machine-readable activity type (e.g., `typing`, `processing`, `reviewing`) |
+
+#### Subscribing to Presence
+
+Agents MAY subscribe to presence changes of specific agents or all agents in their tenant:
+
+```json
+{
+  "type": "presence.subscribe",
+  "agents": ["frontend@tenant.provider", "backend@tenant.provider"]
+}
+```
+
+```json
+{
+  "type": "presence.subscribe",
+  "scope": "tenant"
+}
+```
+
+Presence updates are delivered as ephemeral events:
+
+```json
+{
+  "type": "presence.update",
+  "category": "ephemeral",
+  "data": {
+    "address": "frontend@tenant.provider",
+    "status": "online",
+    "status_text": null,
+    "activity": null,
+    "instances": 2,
+    "last_active_at": "2026-02-01T10:30:00Z"
+  }
+}
+```
+
+#### Presence Privacy
+
+Presence is visible only within the same tenant by default. Cross-tenant presence is not supported in v0.3. Providers MAY expose a `presence_visible` flag on agent registration to opt out of presence tracking entirely.
+
 ## Webhook Delivery
 
 ### Configuration
