@@ -835,13 +835,13 @@ Providers that expose the `/v1/metrics` endpoint MUST include these metrics:
 
 ### Access Control
 
-The `/v1/metrics` endpoint SHOULD NOT require API key authentication, following the Prometheus convention of protecting metrics at the network level (e.g., separate port, firewall rules, or internal-only binding). Providers MAY serve metrics on a separate port (e.g., `:9090/metrics`) if preferred.
+Exposing metrics on the public API without authentication can leak operational intelligence (agent counts, message volumes, federation partners). Providers are RECOMMENDED to serve metrics on a **separate port** (e.g., `:9090/metrics`) bound to an internal interface, following the Prometheus convention of network-level protection.
 
-Providers that require authentication on the metrics endpoint MUST accept the standard `Authorization: Bearer <api_key>` header.
+If metrics are served on the public API path (`/v1/metrics`), providers SHOULD require authentication via the standard `Authorization: Bearer <api_key>` header. Unauthenticated metrics endpoints MUST NOT be exposed on public-facing interfaces.
 
 ## Optimistic Concurrency
 
-Mutable resources (currently: agent configuration via `PATCH /v1/agents/me`) support optimistic concurrency via the standard HTTP `If-Match` mechanism.
+Providers MAY support optimistic concurrency on mutable resources via the standard HTTP `If-Match` mechanism. This is currently applicable to agent configuration (`PATCH /v1/agents/me`) and will extend to future mutable resources.
 
 ### How It Works
 
