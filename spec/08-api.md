@@ -600,7 +600,7 @@ Providers MUST validate the following on delivered messages:
 | `envelope.timestamp` | Valid ISO 8601 datetime |
 | `envelope.signature` | Valid Base64 string |
 
-Providers SHOULD reject messages with unknown top-level fields in the envelope to prevent schema drift across the federation. Unknown fields in `payload.context` MUST be preserved (per spec [04-messages.md](04-messages.md)).
+Providers MUST NOT reject messages with unknown envelope fields. Unknown fields MUST be preserved and forwarded. This ensures forward compatibility — when a newer protocol version adds envelope fields, older providers will pass them through rather than breaking federation. Unknown fields in `payload.context` MUST also be preserved (per spec [04-messages.md](04-messages.md)).
 
 ### Validation Error Response
 

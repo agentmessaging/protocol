@@ -172,29 +172,15 @@ WebSocket events fall into two categories that determine persistence and recover
 | `message.delivered` | durable | Delivery receipt |
 | `message.read` | durable | Read receipt |
 
-**Ephemeral events** are real-time signals with no persistence guarantee. If a client misses an ephemeral event, the information is lost. These events are only delivered to currently connected WebSocket clients.
+**Ephemeral events** are real-time signals with no persistence guarantee. If a client misses an ephemeral event, the information is lost. These events are only delivered to currently connected WebSocket clients. Ephemeral events include presence and activity signals defined in subsequent sections of the specification.
 
-| Event Type | Category | Description |
-|------------|----------|-------------|
-| `presence.update` | ephemeral | Agent online/offline/idle state changed |
-| `presence.activity` | ephemeral | Agent is active (typing, processing) |
-| `agent.status` | ephemeral | Agent status text or metadata changed |
-
-All events MUST carry a `category` field:
+All events SHOULD carry a `category` field to make the distinction explicit per-event:
 
 ```json
 {
   "type": "message.new",
   "category": "durable",
   "seq": 42,
-  "data": { ... }
-}
-```
-
-```json
-{
-  "type": "presence.activity",
-  "category": "ephemeral",
   "data": { ... }
 }
 ```

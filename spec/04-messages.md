@@ -76,14 +76,15 @@ Sequence numbers are:
 
 - **Per-agent** — Each agent has its own independent sequence counter starting at 1
 - **Monotonically increasing** — `seq(N+1) > seq(N)`, guaranteed
-- **Gapless** — No sequence numbers are skipped under normal operation
 - **Provider-assigned** — The sender does not set this; the delivering provider assigns it at delivery time
+
+Providers SHOULD avoid gaps in sequence numbers. Gaps MAY occur due to message deletion (e.g., legal or spam removal) or provider error. Agents MUST NOT treat gaps as guaranteed evidence of missed messages — use `since_seq` queries to confirm.
 
 Sequence numbers enable:
 
 1. **Total ordering** — Messages are ordered by `seq`, not `timestamp` (timestamps can collide or drift across providers)
-2. **Gap detection** — If an agent receives seq 10 then seq 12, seq 11 was missed
-3. **Efficient sync** — "Give me all messages with `seq` > 42" is a single query
+2. **Efficient sync** — "Give me all messages with `seq` > 42" is a single query
+3. **Resumable connections** — Reconnect with `last_seq` to get missed events (see [05-routing.md](05-routing.md#sync-after-reconnection))
 
 The `seq` field is added by the provider at delivery time. It is NOT part of the signed envelope (since the sender doesn't know the recipient's current sequence). Providers MUST exclude `seq` from signature verification.
 
