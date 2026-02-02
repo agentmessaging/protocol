@@ -265,37 +265,22 @@ If `instance_id` is not provided, the provider assigns a random identifier for t
 
 When an agent has multiple connected instances, the provider MUST deliver **durable events** (messages, receipts) to ALL connected instances by default. This ensures no messages are lost regardless of which instance processes them.
 
-Agents MAY register instance-specific filters to receive only relevant messages on a given connection:
+Providers MAY support instance-specific message filtering via `subscribe`/`unsubscribe` frames. This is an optional optimization for high-throughput agents — most implementations will not need it.
 
 ```json
 {
   "type": "subscribe",
-  "filters": {
-    "threads": ["thread_abc123", "thread_def456"],
-    "priority_min": "high",
-    "types": ["request", "alert"]
-  }
-}
-```
-
-```json
-{
-  "type": "unsubscribe",
   "filters": {
     "threads": ["thread_abc123"]
   }
 }
 ```
 
-When filters are active on a connection:
-- Messages matching **any** filter are delivered to that connection
-- Messages matching **no** filter on any connection are delivered to ALL instances (ensuring no message is silently dropped)
-
-**Ephemeral events** follow the same rules: delivered to all instances unless filtered.
+When filters are active, messages matching any filter are delivered to that connection. Messages that match no filter on any filtered connection MUST still be delivered to at least one instance — providers MUST NOT silently drop messages due to filtering.
 
 #### Instance-Targeted Events
 
-Some events are relevant to a specific instance only (e.g., a delivery confirmation for a message sent from that instance). Providers SHOULD support targeting by including `_target_instance` on the event:
+Some events are relevant to a specific instance only (e.g., a delivery confirmation for a message sent from that instance). Providers SHOULD support targeting by including `target_instance` on the event:
 
 ```json
 {
@@ -308,11 +293,11 @@ Some events are relevant to a specific instance only (e.g., a delivery confirmat
     "delivered_at": "2026-02-01T10:00:00Z",
     "method": "websocket"
   },
-  "_target_instance": "macbook-01"
+  "target_instance": "macbook-01"
 }
 ```
 
-Events with `_target_instance` are delivered only to that connection. Events without it are broadcast to all instances of the agent.
+Events with `target_instance` are delivered only to that connection. Events without it are broadcast to all instances of the agent.
 
 ### Presence
 
@@ -323,11 +308,11 @@ Providers SHOULD track agent presence and expose it to other agents within the s
 | State | Description |
 |-------|-------------|
 | `online` | Agent has at least one active WebSocket connection |
-| `idle` | Agent is connected but no activity for 5+ minutes |
+| `idle` | Agent is connected but inactive (provider-defined timeout, RECOMMENDED: 5 minutes) |
 | `busy` | Agent has explicitly set busy status |
 | `offline` | No active connections |
 
-Providers MUST automatically set presence to `online` when a WebSocket connects and to `offline` when the last connection disconnects. Providers SHOULD set presence to `idle` after 5 minutes of inactivity (no messages sent or acknowledged).
+Providers MUST automatically set presence to `online` when a WebSocket connects and to `offline` when the last connection disconnects. Providers SHOULD transition to `idle` after a period of inactivity (no messages sent or acknowledged). The idle timeout is provider-configurable; the RECOMMENDED default is 5 minutes.
 
 #### Explicit Presence Updates
 
@@ -368,6 +353,8 @@ Agents MAY subscribe to presence changes of specific agents or all agents in the
 }
 ```
 
+Targeted subscriptions (listing specific agents) are RECOMMENDED over tenant-wide subscriptions. Tenant-wide subscriptions can generate significant event volume in tenants with many agents; providers MAY throttle or limit tenant-scope presence updates.
+
 Presence updates are delivered as ephemeral events:
 
 ```json
@@ -387,7 +374,7 @@ Presence updates are delivered as ephemeral events:
 
 #### Presence Privacy
 
-Presence is visible only within the same tenant by default. Cross-tenant presence is not supported in v0.3. Providers MAY expose a `presence_visible` flag on agent registration to opt out of presence tracking entirely.
+Presence is visible only within the same tenant by default. Cross-tenant presence is out of scope for this specification. Providers MAY expose a `presence_visible` flag on agent registration to opt out of presence tracking entirely.
 
 ## Webhook Delivery
 

@@ -44,6 +44,10 @@ A channel bridge SHOULD:
 3. Track message delivery status on the external platform and report back via AMP receipts
 4. Implement rate limiting appropriate to the external platform's constraints
 
+### Lightweight Bridges
+
+For same-provider deployments where the bridge and agents share a provider, bridges MAY use API key authentication only (without message signing). This simplifies deployment for internal bridges that don't cross federation boundaries. Bridges that forward messages across providers MUST use full cryptographic signing per [04-messages.md](04-messages.md).
+
 ## Registration
 
 Bridges register like any AMP agent, with additional metadata:
@@ -110,6 +114,9 @@ Messages originating from external channels MUST include a `channel` object in t
       "wrapped": true,
       "scanned_at": "2026-02-01T10:00:01Z"
     }
+    // NOTE: The security object follows the content security metadata
+    // structure defined in 07-security.md. Bridges MUST use the same
+    // schema — this is not a bridge-specific format.
   }
 }
 ```
@@ -229,7 +236,7 @@ All content from external channels is untrusted by default. Content security pro
 Bridges MUST:
 
 1. Scan all inbound external content for prompt injection patterns (see [Appendix A](appendix-a-injection-patterns.md))
-2. Include `security` metadata on all forwarded messages with scan results
+2. Include `security` metadata on all forwarded messages using the content security metadata structure defined in [07-security.md](07-security.md)
 3. Wrap untrusted content in `<external-content>` tags:
 
 ```

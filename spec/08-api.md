@@ -479,13 +479,11 @@ wss://api.<provider>/v1/ws
   "id": "msg_1706648400_abc123"
 }
 
-// Subscribe to message filters (multi-instance)
+// Subscribe to message filters (optional, multi-instance optimization)
 {
   "type": "subscribe",
   "filters": {
-    "threads": ["thread_abc123"],
-    "priority_min": "high",
-    "types": ["request", "alert"]
+    "threads": ["thread_abc123"]
   }
 }
 
