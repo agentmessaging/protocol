@@ -111,6 +111,7 @@ Response: 200 OK
 {
   "address": "backend-architect@23blocks.trycrabmail.com",
   "alias": "Backend Architect",
+  "version": 3,
   "delivery": {
     "webhook_url": "https://myserver.com/webhook",
     "prefer_websocket": true
@@ -123,9 +124,12 @@ Response: 200 OK
 
 #### Update Agent
 
+Supports optimistic concurrency via `If-Match` header (see [Optimistic Concurrency](#optimistic-concurrency)).
+
 ```http
 PATCH /v1/agents/me
 Authorization: Bearer <api_key>
+If-Match: 3
 Content-Type: application/json
 
 {
@@ -138,9 +142,23 @@ Content-Type: application/json
 Response: 200 OK
 {
   "updated": true,
+  "version": 4,
   "address": "backend-architect@23blocks.trycrabmail.com"
 }
 ```
+
+If the `If-Match` version doesn't match the current version, the server responds:
+
+```http
+409 Conflict
+{
+  "error": "version_conflict",
+  "message": "Expected version 3, current version is 5",
+  "current_version": 5
+}
+```
+
+If `If-Match` is not provided, the update proceeds without version checking (last-write-wins, for backward compatibility).
 
 #### Deregister Agent
 
@@ -716,6 +734,7 @@ Providers MUST NOT reject messages with unknown envelope fields. Unknown fields 
 | `forbidden` | 403 | Insufficient permissions |
 | `not_found` | 404 | Resource not found |
 | `name_taken` | 409 | Agent name already exists |
+| `version_conflict` | 409 | Optimistic concurrency conflict (see [Optimistic Concurrency](#optimistic-concurrency)) |
 | `rate_limited` | 429 | Too many requests |
 | `internal_error` | 500 | Server error |
 
@@ -735,6 +754,151 @@ X-RateLimit-Limit: 60
 X-RateLimit-Remaining: 45
 X-RateLimit-Reset: 1706648460
 ```
+
+## Metrics
+
+Providers SHOULD expose operational metrics in [OpenMetrics](https://openmetrics.io/) / Prometheus exposition format. Standardized metric names enable shared dashboards and alerting rules across AMP providers.
+
+### Metrics Endpoint
+
+```http
+GET /v1/metrics
+Accept: text/plain; version=0.0.4
+
+Response: 200 OK
+Content-Type: text/plain; version=0.0.4; charset=utf-8
+
+# HELP amp_messages_routed_total Total messages routed by this provider
+# TYPE amp_messages_routed_total counter
+amp_messages_routed_total{method="websocket"} 12345
+amp_messages_routed_total{method="webhook"} 5678
+amp_messages_routed_total{method="relay"} 890
+
+# HELP amp_messages_pending Current messages in relay queues
+# TYPE amp_messages_pending gauge
+amp_messages_pending 42
+
+# HELP amp_websocket_connections Current active WebSocket connections
+# TYPE amp_websocket_connections gauge
+amp_websocket_connections 15
+
+# HELP amp_agents_registered Total registered agents
+# TYPE amp_agents_registered gauge
+amp_agents_registered 100
+
+# HELP amp_agents_online Currently online agents (at least one connection)
+# TYPE amp_agents_online gauge
+amp_agents_online 42
+
+# HELP amp_route_duration_seconds Message routing latency
+# TYPE amp_route_duration_seconds histogram
+amp_route_duration_seconds_bucket{method="websocket",le="0.01"} 9000
+amp_route_duration_seconds_bucket{method="websocket",le="0.05"} 11000
+amp_route_duration_seconds_bucket{method="websocket",le="0.1"} 12000
+amp_route_duration_seconds_bucket{method="websocket",le="0.5"} 12300
+amp_route_duration_seconds_bucket{method="websocket",le="+Inf"} 12345
+
+# HELP amp_federation_requests_total Cross-provider federation requests
+# TYPE amp_federation_requests_total counter
+amp_federation_requests_total{direction="inbound",status="accepted"} 3000
+amp_federation_requests_total{direction="inbound",status="rejected"} 50
+amp_federation_requests_total{direction="outbound",status="delivered"} 2500
+amp_federation_requests_total{direction="outbound",status="failed"} 30
+
+# HELP amp_webhook_deliveries_total Webhook delivery attempts
+# TYPE amp_webhook_deliveries_total counter
+amp_webhook_deliveries_total{status="success"} 5000
+amp_webhook_deliveries_total{status="retry"} 300
+amp_webhook_deliveries_total{status="failed"} 78
+```
+
+### Required Metrics (MUST)
+
+Providers that expose the `/v1/metrics` endpoint MUST include these metrics:
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `amp_messages_routed_total` | counter | `method` | Messages routed, by delivery method |
+| `amp_messages_pending` | gauge | — | Messages currently in relay queues |
+| `amp_websocket_connections` | gauge | — | Active WebSocket connections |
+| `amp_agents_online` | gauge | — | Agents with at least one active connection |
+
+### Recommended Metrics (SHOULD)
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `amp_route_duration_seconds` | histogram | `method` | End-to-end routing latency |
+| `amp_agents_registered` | gauge | — | Total registered agents |
+| `amp_federation_requests_total` | counter | `direction`, `status` | Cross-provider federation traffic |
+| `amp_webhook_deliveries_total` | counter | `status` | Webhook delivery attempts and outcomes |
+| `amp_relay_queue_age_seconds` | gauge | — | Age of oldest message in relay queue |
+
+### Access Control
+
+Exposing metrics on the public API without authentication can leak operational intelligence (agent counts, message volumes, federation partners). Providers are RECOMMENDED to serve metrics on a **separate port** (e.g., `:9090/metrics`) bound to an internal interface, following the Prometheus convention of network-level protection.
+
+If metrics are served on the public API path (`/v1/metrics`), providers SHOULD require authentication via the standard `Authorization: Bearer <api_key>` header. Unauthenticated metrics endpoints MUST NOT be exposed on public-facing interfaces.
+
+## Optimistic Concurrency
+
+Providers MAY support optimistic concurrency on mutable resources via the standard HTTP `If-Match` mechanism. This is currently applicable to agent configuration (`PATCH /v1/agents/me`) and will extend to future mutable resources.
+
+### How It Works
+
+1. **Read** the current state — the response includes a `version` field:
+
+```json
+{
+  "address": "backend@tenant.provider",
+  "version": 3,
+  "alias": "Backend API",
+  ...
+}
+```
+
+2. **Update** with `If-Match` set to the expected version:
+
+```http
+PATCH /v1/agents/me
+Authorization: Bearer <api_key>
+If-Match: 3
+Content-Type: application/json
+
+{"alias": "New Name"}
+```
+
+3. **Success** — the response includes the new version:
+
+```json
+{
+  "updated": true,
+  "version": 4,
+  "address": "backend@tenant.provider"
+}
+```
+
+4. **Conflict** — if another instance updated in between:
+
+```json
+{
+  "error": "version_conflict",
+  "message": "Expected version 3, current version is 5",
+  "current_version": 5
+}
+```
+
+### Backward Compatibility
+
+If the `If-Match` header is not provided, the update proceeds without version checking (last-write-wins). This ensures existing clients continue to work without modification.
+
+### When to Use
+
+Optimistic concurrency is most valuable when:
+- Multiple instances of the same agent may update configuration simultaneously
+- Webhook URLs or delivery preferences are being changed programmatically
+- Agent metadata is managed by automation that may race
+
+For single-instance agents, `If-Match` is optional but recommended as a safety measure.
 
 ## Pagination
 
