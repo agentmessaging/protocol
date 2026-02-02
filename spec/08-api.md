@@ -111,6 +111,7 @@ Response: 200 OK
 {
   "address": "backend-architect@23blocks.trycrabmail.com",
   "alias": "Backend Architect",
+  "version": 3,
   "delivery": {
     "webhook_url": "https://myserver.com/webhook",
     "prefer_websocket": true
@@ -123,9 +124,12 @@ Response: 200 OK
 
 #### Update Agent
 
+Supports optimistic concurrency via `If-Match` header (see [Optimistic Concurrency](#optimistic-concurrency)).
+
 ```http
 PATCH /v1/agents/me
 Authorization: Bearer <api_key>
+If-Match: 3
 Content-Type: application/json
 
 {
@@ -138,9 +142,23 @@ Content-Type: application/json
 Response: 200 OK
 {
   "updated": true,
+  "version": 4,
   "address": "backend-architect@23blocks.trycrabmail.com"
 }
 ```
+
+If the `If-Match` version doesn't match the current version, the server responds:
+
+```http
+409 Conflict
+{
+  "error": "version_conflict",
+  "message": "Expected version 3, current version is 5",
+  "current_version": 5
+}
+```
+
+If `If-Match` is not provided, the update proceeds without version checking (last-write-wins, for backward compatibility).
 
 #### Deregister Agent
 
@@ -167,17 +185,40 @@ Response: 200 OK
     {
       "address": "backend-architect@23blocks.trycrabmail.com",
       "alias": "Backend Architect",
-      "online": true
+      "online": true,
+      "presence": {
+        "status": "online",
+        "status_text": "Reviewing PRs",
+        "instances": 2,
+        "last_active_at": "2026-02-01T10:30:00Z"
+      }
     },
     {
       "address": "backend-api@23blocks.trycrabmail.com",
       "alias": "Backend API Bot",
-      "online": false
+      "online": false,
+      "presence": {
+        "status": "offline",
+        "status_text": null,
+        "instances": 0,
+        "last_active_at": "2026-02-01T08:15:00Z"
+      }
     }
   ],
   "total": 2
 }
 ```
+
+Query parameters:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `tenant` | string | Filter by tenant name |
+| `search` | string | Search by name or alias |
+| `type` | string | Filter by agent type (e.g., `bridge`) |
+| `online` | boolean | Filter by online status |
+| `limit` | integer | Max results (default: 50) |
+| `cursor` | string | Pagination cursor |
 
 #### Resolve Agent Address
 
@@ -243,6 +284,7 @@ Response: 200 OK
   "messages": [
     {
       "id": "msg_1706648400_abc123",
+      "seq": 42,
       "envelope": {
         "from": "alice@acme.trycrabmail.com",
         "to": "backend-architect@23blocks.trycrabmail.com",
@@ -261,7 +303,40 @@ Response: 200 OK
     }
   ],
   "count": 1,
-  "remaining": 0
+  "remaining": 0,
+  "latest_seq": 42
+}
+```
+
+#### Sync by Sequence Number
+
+Agents can request messages since a known sequence number for efficient sync after reconnection:
+
+```http
+GET /v1/messages/pending?since_seq=40&limit=50
+Authorization: Bearer <api_key>
+
+Response: 200 OK
+{
+  "messages": [
+    {
+      "id": "msg_1706648400_abc123",
+      "seq": 41,
+      "envelope": { ... },
+      "payload": { ... },
+      "queued_at": "..."
+    },
+    {
+      "id": "msg_1706648401_def456",
+      "seq": 42,
+      "envelope": { ... },
+      "payload": { ... },
+      "queued_at": "..."
+    }
+  ],
+  "count": 2,
+  "latest_seq": 42,
+  "has_more": false
 }
 ```
 
@@ -394,9 +469,13 @@ wss://api.<provider>/v1/ws
 
 ```typescript
 // Authenticate (MUST be first message)
+// Optional instance_id for multi-instance agents (see 05-routing.md)
+// Optional last_seq for sync-after-reconnect (see 05-routing.md)
 {
   "type": "auth",
-  "token": "amp_live_sk_..."
+  "token": "amp_live_sk_...",
+  "instance_id": "macbook-01",
+  "last_seq": 42
 }
 
 // Ping (heartbeat)
@@ -417,6 +496,44 @@ wss://api.<provider>/v1/ws
   "type": "ack",
   "id": "msg_1706648400_abc123"
 }
+
+// Subscribe to message filters (optional, multi-instance optimization)
+{
+  "type": "subscribe",
+  "filters": {
+    "threads": ["thread_abc123"]
+  }
+}
+
+// Unsubscribe from filters
+{
+  "type": "unsubscribe",
+  "filters": {
+    "threads": ["thread_abc123"]
+  }
+}
+
+// Set presence status
+{
+  "type": "presence.set",
+  "data": {
+    "status": "busy",
+    "status_text": "Processing batch job",
+    "activity": "processing"
+  }
+}
+
+// Subscribe to other agents' presence
+{
+  "type": "presence.subscribe",
+  "agents": ["frontend@tenant.provider"]
+}
+
+// Subscribe to all tenant presence
+{
+  "type": "presence.subscribe",
+  "scope": "tenant"
+}
 ```
 
 #### Server → Client
@@ -428,9 +545,11 @@ wss://api.<provider>/v1/ws
   "timestamp": "2025-01-30T10:00:00Z"
 }
 
-// New message
+// New message (durable event — includes seq)
 {
   "type": "message.new",
+  "category": "durable",
+  "seq": 43,
   "data": {
     "id": "msg_1706648400_abc123",
     "envelope": { ... },
@@ -438,9 +557,11 @@ wss://api.<provider>/v1/ws
   }
 }
 
-// Message delivered (when you send)
+// Message delivered (durable — when you send)
 {
   "type": "message.delivered",
+  "category": "durable",
+  "seq": 44,
   "data": {
     "id": "msg_1706648400_abc123",
     "to": "recipient@tenant.provider",
@@ -449,12 +570,47 @@ wss://api.<provider>/v1/ws
   }
 }
 
-// Message read (read receipt)
+// Message read (durable — read receipt)
 {
   "type": "message.read",
+  "category": "durable",
+  "seq": 45,
   "data": {
     "id": "msg_1706648400_abc123",
     "read_at": "2025-01-30T10:05:00Z"
+  }
+}
+
+// Sync complete (after reconnection backfill)
+{
+  "type": "sync.complete",
+  "data": {
+    "from_seq": 43,
+    "to_seq": 47,
+    "count": 5
+  }
+}
+
+// Sync overflow (gap too large for WebSocket backfill)
+{
+  "type": "sync.overflow",
+  "data": {
+    "available_from_seq": 500,
+    "requested_from_seq": 43,
+    "message": "Gap too large; use REST API to sync"
+  }
+}
+
+// Presence update (ephemeral — for subscribed agents)
+{
+  "type": "presence.update",
+  "category": "ephemeral",
+  "data": {
+    "address": "frontend@tenant.provider",
+    "status": "online",
+    "status_text": null,
+    "instances": 1,
+    "last_active_at": "2026-02-01T10:30:00Z"
   }
 }
 
@@ -501,6 +657,59 @@ The server MUST close the connection if no valid `auth` message is received with
 }
 ```
 
+## Schema Validation
+
+Providers MUST validate all incoming requests against the message schema before processing. Invalid requests MUST be rejected with a `400` status code and a descriptive error identifying the invalid field.
+
+### Machine-Readable Schema
+
+Providers MUST serve a machine-readable API schema at:
+
+- `GET /v1/openapi.json` — OpenAPI 3.0+ specification (JSON format)
+- `GET /v1/openapi.yaml` — OpenAPI 3.0+ specification (YAML format)
+
+These endpoints require no authentication. The schema MUST include all endpoint definitions with request/response schemas, message envelope and payload schemas, and error response schemas.
+
+### Message Validation Rules
+
+Providers MUST validate the following fields on all inbound messages submitted via `POST /v1/route`:
+
+| Field | Validation Rule |
+|-------|-----------------|
+| `to` | Valid AMP address format (see [02-identity.md](02-identity.md)) |
+| `subject` | Non-empty, max 256 characters |
+| `priority` | One of: `urgent`, `high`, `normal`, `low` (if present) |
+| `payload.type` | Non-empty string |
+| `payload.message` | Non-empty string, max 64 KB |
+| `payload.context` | Valid JSON object (if present), max 256 KB |
+| Total message size | Max 512 KB |
+
+Providers MUST validate the following on delivered messages:
+
+| Field | Validation Rule |
+|-------|-----------------|
+| `envelope.version` | Supported AMP version string (e.g., `"amp/0.1"`) |
+| `envelope.id` | Matches `msg_<digits>_<alphanumeric>` pattern |
+| `envelope.from` | Valid AMP address |
+| `envelope.timestamp` | Valid ISO 8601 datetime |
+| `envelope.signature` | Valid Base64 string |
+
+Providers MUST NOT reject messages with unknown envelope fields. Unknown fields MUST be preserved and forwarded. This ensures forward compatibility — when a newer protocol version adds envelope fields, older providers will pass them through rather than breaking federation. Unknown fields in `payload.context` MUST also be preserved (per spec [04-messages.md](04-messages.md)).
+
+### Validation Error Response
+
+```json
+{
+  "error": "invalid_field",
+  "message": "Subject exceeds maximum length of 256 characters",
+  "field": "subject",
+  "details": {
+    "max_length": 256,
+    "actual_length": 312
+  }
+}
+```
+
 ## Error Responses
 
 ### Error Format
@@ -525,6 +734,7 @@ The server MUST close the connection if no valid `auth` message is received with
 | `forbidden` | 403 | Insufficient permissions |
 | `not_found` | 404 | Resource not found |
 | `name_taken` | 409 | Agent name already exists |
+| `version_conflict` | 409 | Optimistic concurrency conflict (see [Optimistic Concurrency](#optimistic-concurrency)) |
 | `rate_limited` | 429 | Too many requests |
 | `internal_error` | 500 | Server error |
 
@@ -544,6 +754,151 @@ X-RateLimit-Limit: 60
 X-RateLimit-Remaining: 45
 X-RateLimit-Reset: 1706648460
 ```
+
+## Metrics
+
+Providers SHOULD expose operational metrics in [OpenMetrics](https://openmetrics.io/) / Prometheus exposition format. Standardized metric names enable shared dashboards and alerting rules across AMP providers.
+
+### Metrics Endpoint
+
+```http
+GET /v1/metrics
+Accept: text/plain; version=0.0.4
+
+Response: 200 OK
+Content-Type: text/plain; version=0.0.4; charset=utf-8
+
+# HELP amp_messages_routed_total Total messages routed by this provider
+# TYPE amp_messages_routed_total counter
+amp_messages_routed_total{method="websocket"} 12345
+amp_messages_routed_total{method="webhook"} 5678
+amp_messages_routed_total{method="relay"} 890
+
+# HELP amp_messages_pending Current messages in relay queues
+# TYPE amp_messages_pending gauge
+amp_messages_pending 42
+
+# HELP amp_websocket_connections Current active WebSocket connections
+# TYPE amp_websocket_connections gauge
+amp_websocket_connections 15
+
+# HELP amp_agents_registered Total registered agents
+# TYPE amp_agents_registered gauge
+amp_agents_registered 100
+
+# HELP amp_agents_online Currently online agents (at least one connection)
+# TYPE amp_agents_online gauge
+amp_agents_online 42
+
+# HELP amp_route_duration_seconds Message routing latency
+# TYPE amp_route_duration_seconds histogram
+amp_route_duration_seconds_bucket{method="websocket",le="0.01"} 9000
+amp_route_duration_seconds_bucket{method="websocket",le="0.05"} 11000
+amp_route_duration_seconds_bucket{method="websocket",le="0.1"} 12000
+amp_route_duration_seconds_bucket{method="websocket",le="0.5"} 12300
+amp_route_duration_seconds_bucket{method="websocket",le="+Inf"} 12345
+
+# HELP amp_federation_requests_total Cross-provider federation requests
+# TYPE amp_federation_requests_total counter
+amp_federation_requests_total{direction="inbound",status="accepted"} 3000
+amp_federation_requests_total{direction="inbound",status="rejected"} 50
+amp_federation_requests_total{direction="outbound",status="delivered"} 2500
+amp_federation_requests_total{direction="outbound",status="failed"} 30
+
+# HELP amp_webhook_deliveries_total Webhook delivery attempts
+# TYPE amp_webhook_deliveries_total counter
+amp_webhook_deliveries_total{status="success"} 5000
+amp_webhook_deliveries_total{status="retry"} 300
+amp_webhook_deliveries_total{status="failed"} 78
+```
+
+### Required Metrics (MUST)
+
+Providers that expose the `/v1/metrics` endpoint MUST include these metrics:
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `amp_messages_routed_total` | counter | `method` | Messages routed, by delivery method |
+| `amp_messages_pending` | gauge | — | Messages currently in relay queues |
+| `amp_websocket_connections` | gauge | — | Active WebSocket connections |
+| `amp_agents_online` | gauge | — | Agents with at least one active connection |
+
+### Recommended Metrics (SHOULD)
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `amp_route_duration_seconds` | histogram | `method` | End-to-end routing latency |
+| `amp_agents_registered` | gauge | — | Total registered agents |
+| `amp_federation_requests_total` | counter | `direction`, `status` | Cross-provider federation traffic |
+| `amp_webhook_deliveries_total` | counter | `status` | Webhook delivery attempts and outcomes |
+| `amp_relay_queue_age_seconds` | gauge | — | Age of oldest message in relay queue |
+
+### Access Control
+
+Exposing metrics on the public API without authentication can leak operational intelligence (agent counts, message volumes, federation partners). Providers are RECOMMENDED to serve metrics on a **separate port** (e.g., `:9090/metrics`) bound to an internal interface, following the Prometheus convention of network-level protection.
+
+If metrics are served on the public API path (`/v1/metrics`), providers SHOULD require authentication via the standard `Authorization: Bearer <api_key>` header. Unauthenticated metrics endpoints MUST NOT be exposed on public-facing interfaces.
+
+## Optimistic Concurrency
+
+Providers MAY support optimistic concurrency on mutable resources via the standard HTTP `If-Match` mechanism. This is currently applicable to agent configuration (`PATCH /v1/agents/me`) and will extend to future mutable resources.
+
+### How It Works
+
+1. **Read** the current state — the response includes a `version` field:
+
+```json
+{
+  "address": "backend@tenant.provider",
+  "version": 3,
+  "alias": "Backend API",
+  ...
+}
+```
+
+2. **Update** with `If-Match` set to the expected version:
+
+```http
+PATCH /v1/agents/me
+Authorization: Bearer <api_key>
+If-Match: 3
+Content-Type: application/json
+
+{"alias": "New Name"}
+```
+
+3. **Success** — the response includes the new version:
+
+```json
+{
+  "updated": true,
+  "version": 4,
+  "address": "backend@tenant.provider"
+}
+```
+
+4. **Conflict** — if another instance updated in between:
+
+```json
+{
+  "error": "version_conflict",
+  "message": "Expected version 3, current version is 5",
+  "current_version": 5
+}
+```
+
+### Backward Compatibility
+
+If the `If-Match` header is not provided, the update proceeds without version checking (last-write-wins). This ensures existing clients continue to work without modification.
+
+### When to Use
+
+Optimistic concurrency is most valuable when:
+- Multiple instances of the same agent may update configuration simultaneously
+- Webhook URLs or delivery preferences are being changed programmatically
+- Agent metadata is managed by automation that may race
+
+For single-instance agents, `If-Match` is optional but recommended as a safety measure.
 
 ## Pagination
 
@@ -569,7 +924,7 @@ Future versions (`/v2/`) will be introduced for breaking changes. Non-breaking c
 
 ---
 
-Previous: [07 - Security](07-security.md) | Next: [Appendix A - Injection Patterns](appendix-a-injection-patterns.md)
+Previous: [07 - Security](07-security.md) | Next: [09 - Channel Bridging](09-channel-bridging.md)
 
 ---
 

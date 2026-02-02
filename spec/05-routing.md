@@ -160,6 +160,222 @@ To maintain presence, agents send periodic pings:
 
 Recommended interval: 30 seconds. Connection times out after 5 minutes without activity.
 
+### Event Categories
+
+WebSocket events fall into two categories that determine persistence and recovery behavior.
+
+**Durable events** represent state changes that are persisted and recoverable. If a client misses a durable event due to brief disconnection, the state can be recovered via REST API polling or sync-after-reconnect.
+
+| Event Type | Category | Description |
+|------------|----------|-------------|
+| `message.new` | durable | New message delivered |
+| `message.delivered` | durable | Delivery receipt |
+| `message.read` | durable | Read receipt |
+
+**Ephemeral events** are real-time signals with no persistence guarantee. If a client misses an ephemeral event, the information is lost. These events are only delivered to currently connected WebSocket clients. Ephemeral events include presence and activity signals defined in subsequent sections of the specification.
+
+All events SHOULD carry a `category` field to make the distinction explicit per-event:
+
+```json
+{
+  "type": "message.new",
+  "category": "durable",
+  "seq": 42,
+  "data": { ... }
+}
+```
+
+Providers MUST include `seq` (sequence number, see [04-messages.md](04-messages.md#sequence-numbers)) on durable events. Providers MUST NOT include `seq` on ephemeral events.
+
+### Sync After Reconnection
+
+When a WebSocket client reconnects after a disconnection, it MAY request missed durable events by providing its last known sequence number in the auth frame:
+
+```json
+{
+  "type": "auth",
+  "token": "amp_live_sk_...",
+  "last_seq": 42
+}
+```
+
+The server responds with the `connected` message followed by all durable events with `seq > 42`, delivered in order. After the backfill is complete, the server sends:
+
+```json
+{
+  "type": "sync.complete",
+  "data": {
+    "from_seq": 43,
+    "to_seq": 47,
+    "count": 5
+  }
+}
+```
+
+If `last_seq` is not provided, no backfill occurs and only new events are delivered.
+
+If the gap is too large (provider-defined threshold, RECOMMENDED maximum: 1000 events), the server MAY respond with:
+
+```json
+{
+  "type": "sync.overflow",
+  "data": {
+    "available_from_seq": 500,
+    "requested_from_seq": 43,
+    "message": "Gap too large; use REST API to sync"
+  }
+}
+```
+
+In the overflow case, the client SHOULD fall back to `GET /v1/messages/pending?since_seq=42` to retrieve missed messages via the REST API.
+
+### Connection Scoping (Multi-Instance Agents)
+
+An agent MAY maintain multiple simultaneous WebSocket connections from different instances (e.g., different machines, containers, or processes). Each connection is identified by an optional `instance_id` provided during authentication.
+
+#### Multi-Instance Authentication
+
+When multiple instances of the same agent connect, each SHOULD provide a unique instance identifier:
+
+```json
+{
+  "type": "auth",
+  "token": "amp_live_sk_...",
+  "instance_id": "macbook-01"
+}
+```
+
+The server responds with connection metadata including information about other active instances:
+
+```json
+{
+  "type": "connected",
+  "data": {
+    "address": "backend@23blocks.provider.com",
+    "instance_id": "macbook-01",
+    "pending_count": 3,
+    "other_instances": 2
+  }
+}
+```
+
+If `instance_id` is not provided, the provider assigns a random identifier for the duration of the connection.
+
+#### Delivery to Multi-Instance Agents
+
+When an agent has multiple connected instances, the provider MUST deliver **durable events** (messages, receipts) to ALL connected instances by default. This ensures no messages are lost regardless of which instance processes them.
+
+Providers MAY support instance-specific message filtering via `subscribe`/`unsubscribe` frames. This is an optional optimization for high-throughput agents — most implementations will not need it.
+
+```json
+{
+  "type": "subscribe",
+  "filters": {
+    "threads": ["thread_abc123"]
+  }
+}
+```
+
+When filters are active, messages matching any filter are delivered to that connection. Messages that match no filter on any filtered connection MUST still be delivered to at least one instance — providers MUST NOT silently drop messages due to filtering.
+
+#### Instance-Targeted Events
+
+Some events are relevant to a specific instance only (e.g., a delivery confirmation for a message sent from that instance). Providers SHOULD support targeting by including `target_instance` on the event:
+
+```json
+{
+  "type": "message.delivered",
+  "category": "durable",
+  "seq": 44,
+  "data": {
+    "id": "msg_abc",
+    "to": "recipient@tenant.provider",
+    "delivered_at": "2026-02-01T10:00:00Z",
+    "method": "websocket"
+  },
+  "target_instance": "macbook-01"
+}
+```
+
+Events with `target_instance` are delivered only to that connection. Events without it are broadcast to all instances of the agent.
+
+### Presence
+
+Providers SHOULD track agent presence and expose it to other agents within the same tenant. Presence is derived from WebSocket connection state and explicit agent signals.
+
+#### Presence States
+
+| State | Description |
+|-------|-------------|
+| `online` | Agent has at least one active WebSocket connection |
+| `idle` | Agent is connected but inactive (provider-defined timeout, RECOMMENDED: 5 minutes) |
+| `busy` | Agent has explicitly set busy status |
+| `offline` | No active connections |
+
+Providers MUST automatically set presence to `online` when a WebSocket connects and to `offline` when the last connection disconnects. Providers SHOULD transition to `idle` after a period of inactivity (no messages sent or acknowledged). The idle timeout is provider-configurable; the RECOMMENDED default is 5 minutes.
+
+#### Explicit Presence Updates
+
+Agents MAY update their presence and status text:
+
+```json
+{
+  "type": "presence.set",
+  "data": {
+    "status": "busy",
+    "status_text": "Processing batch job",
+    "activity": "processing"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `status` | enum | No | `online`, `idle`, `busy` (cannot set `offline` — disconnect instead) |
+| `status_text` | string | No | Human-readable status message (max 128 chars) |
+| `activity` | string | No | Machine-readable activity type (e.g., `typing`, `processing`, `reviewing`) |
+
+#### Subscribing to Presence
+
+Agents MAY subscribe to presence changes of specific agents or all agents in their tenant:
+
+```json
+{
+  "type": "presence.subscribe",
+  "agents": ["frontend@tenant.provider", "backend@tenant.provider"]
+}
+```
+
+```json
+{
+  "type": "presence.subscribe",
+  "scope": "tenant"
+}
+```
+
+Targeted subscriptions (listing specific agents) are RECOMMENDED over tenant-wide subscriptions. Tenant-wide subscriptions can generate significant event volume in tenants with many agents; providers MAY throttle or limit tenant-scope presence updates.
+
+Presence updates are delivered as ephemeral events:
+
+```json
+{
+  "type": "presence.update",
+  "category": "ephemeral",
+  "data": {
+    "address": "frontend@tenant.provider",
+    "status": "online",
+    "status_text": null,
+    "activity": null,
+    "instances": 2,
+    "last_active_at": "2026-02-01T10:30:00Z"
+  }
+}
+```
+
+#### Presence Privacy
+
+Presence is visible only within the same tenant by default. Cross-tenant presence is out of scope for this specification. Providers MAY expose a `presence_visible` flag on agent registration to opt out of presence tracking entirely.
+
 ## Webhook Delivery
 
 ### Configuration
@@ -295,9 +511,11 @@ Content-Type: application/json
 
 Messages MAY arrive out of order, especially when delivered via different methods (e.g., one message via WebSocket, another via relay) or across federation boundaries.
 
-- Agents SHOULD use `timestamp` and `in_reply_to` fields to reconstruct logical message order.
-- Providers SHOULD deliver relay queue messages in FIFO order (oldest first).
+- Agents SHOULD use the `seq` field as the primary ordering key for messages from the same provider. Sequence numbers provide a total order that timestamps cannot guarantee.
+- For messages from different providers (federated), agents SHOULD fall back to `timestamp` and `in_reply_to` fields to reconstruct logical order.
+- Providers SHOULD deliver relay queue messages in FIFO order (oldest first), with ascending `seq` values.
 - Agents MUST NOT assume that message arrival order matches send order.
+- Agents SHOULD detect gaps in sequence numbers (`seq` N followed by `seq` N+2 indicates a missed message) and request the missing message via the REST API.
 
 ## Routing Algorithm
 
