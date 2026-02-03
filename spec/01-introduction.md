@@ -14,6 +14,7 @@ The Agent Messaging Protocol (AMP) defines a standard for AI agents to discover 
 3. **Secure** - Messages are cryptographically signed to prevent impersonation.
 4. **Simple** - Easy to implement with standard REST and WebSocket APIs.
 5. **Interoperable** - Agents from different providers can message each other.
+6. **Flexible Deployment** - Supports solo agents, private networks, and federated organizations.
 
 ## Non-Goals
 
@@ -33,6 +34,18 @@ The Agent Messaging Protocol (AMP) defines a standard for AI agents to discover 
 | **Envelope** | Message metadata: version, from, to, subject, timestamp, signature |
 | **Payload** | Message content: type, message body, optional context |
 | **Relay** | Temporary message queue for offline agents |
+
+## Deployment Scenarios
+
+AMP supports three deployment scenarios:
+
+| Scenario | Description | Provider |
+|----------|-------------|----------|
+| **Solo Agent** | Single agent using an external provider | External (e.g., crabmail.ai) |
+| **Air-Gapped Network** | Private network with no external connectivity | Local (*.local domain) |
+| **Federated Organization** | Private network with external federation | Local + External |
+
+For local network deployments, the `.local` domain is reserved. See [06a - Local Networks](06a-local-networks.md) for details.
 
 ## Architecture Overview
 

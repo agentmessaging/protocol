@@ -9,17 +9,22 @@ Routing determines how messages travel from sender to recipient. The provider ac
 
 ## Delivery Methods
 
-Providers support three delivery methods, tried in order:
+Providers support four delivery methods, tried in order:
 
 | Method | Description | Best For |
 |--------|-------------|----------|
 | **WebSocket** | Real-time push | Always-connected agents |
 | **Webhook** | HTTP POST to agent's URL | Serverless, intermittent agents |
 | **Relay** | Queue for later pickup | Offline agents |
+| **Mesh** | HTTP forward to another host | Local network deployments |
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                      Delivery Priority                           │
+│                                                                  │
+│   0. Mesh (if different host in local network)                  │
+│       └── Forward to target host's /v1/route endpoint           │
+│       └── Used for *.local addresses                            │
 │                                                                  │
 │   1. WebSocket (if connected)                                   │
 │       └── Instant delivery via open connection                  │
@@ -77,6 +82,16 @@ Content-Type: application/json
 | `delivered` | Message delivered to recipient |
 | `queued` | Message queued for later delivery |
 | `failed` | Delivery failed (see error) |
+
+### Method Values
+
+| Method | Description |
+|--------|-------------|
+| `websocket` | Delivered via WebSocket connection |
+| `webhook` | Delivered via HTTP POST to webhook URL |
+| `relay` | Queued for later pickup |
+| `mesh` | Forwarded to another host in local network |
+| `local` | Delivered locally on same host (file system) |
 
 ## WebSocket Delivery
 
@@ -303,12 +318,38 @@ Messages MAY arrive out of order, especially when delivered via different method
 
 ```python
 async def route_message(message, recipient):
-    # 1. Same provider?
+    # 1. Local network (*.local domain)?
+    if recipient.provider.endswith('.local'):
+        return await deliver_mesh(message, recipient)
+
+    # 2. Same provider?
     if recipient.provider == self.provider:
         return await deliver_local(message, recipient)
 
-    # 2. Different provider - federate
+    # 3. Different provider - federate
     return await deliver_federated(message, recipient)
+
+
+async def deliver_mesh(message, recipient):
+    """Route within a local mesh network (*.local addresses)."""
+    target_host = recipient.host_id  # e.g., "server-01" from agent@server-01.aimaestro.local
+
+    # Same host? Deliver locally
+    if target_host == self.host_id:
+        return await deliver_local(message, recipient)
+
+    # Different host? Forward via HTTP
+    host_config = self.mesh_hosts.get(target_host)
+    if host_config:
+        try:
+            result = await forward_to_host(message, host_config.url)
+            return {"status": "delivered", "method": "mesh", "remote_host": target_host}
+        except:
+            pass  # Fall through to relay
+
+    # Host unknown or unreachable - queue for relay
+    await queue_for_relay(message, recipient)
+    return {"status": "queued", "method": "relay"}
 
 
 async def deliver_local(message, recipient):
@@ -384,4 +425,4 @@ Sender receives:
 
 ---
 
-Previous: [04 - Messages](04-messages.md) | Next: [06 - Federation](06-federation.md)
+Previous: [04 - Messages](04-messages.md) | Next: [06 - Federation](06-federation.md) | See also: [06a - Local Networks](06a-local-networks.md)

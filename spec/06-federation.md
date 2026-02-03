@@ -334,4 +334,4 @@ Providers SHOULD log federation events:
 
 ---
 
-Previous: [05 - Routing](05-routing.md) | Next: [07 - Security](07-security.md)
+Previous: [05 - Routing](05-routing.md) | Next: [06a - Local Networks](06a-local-networks.md) | [07 - Security](07-security.md)
