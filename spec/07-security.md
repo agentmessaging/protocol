@@ -63,27 +63,44 @@ openssl rsa -in private.pem -pubout -out public.pem
 
 ## Message Signing
 
-> **Important:** The signing procedure is algorithm-specific. See [04 - Messages](04-messages.md) for the full specification. Ed25519 signs raw message bytes (it performs SHA-512 internally); RSA and ECDSA sign a SHA-256 hash.
+> **Important:** Messages MUST be signed by the **sending agent**, not the provider. See [04 - Messages](04-messages.md) for the full specification.
+
+### Signature Format (v1.1)
+
+The canonical string for signing uses selective fields rather than the full message:
+
+```
+{from}|{to}|{subject}|{priority}|{in_reply_to}|{payload_hash}
+```
+
+**Why selective signing?**
+
+| Design Goal | How It's Achieved |
+|-------------|-------------------|
+| Client-side signing | Client signs before server adds `id`/`timestamp` |
+| Federation integrity | Signature survives provider hops unchanged |
+| Prevent priority escalation | Priority is signed |
+| Prevent thread hijacking | `in_reply_to` is signed |
+| Content integrity | `payload_hash` covers entire payload |
 
 ### Signing Process (Ed25519)
 
 ```python
 import json
+import hashlib
 import base64
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-def sign_message(envelope, payload, private_key):
-    # 1. Create message without signature
-    message = {
-        "envelope": {k: v for k, v in envelope.items() if k != "signature"},
-        "payload": payload
-    }
+def sign_message(from_addr, to_addr, subject, priority, in_reply_to, payload, private_key):
+    # 1. Calculate payload hash
+    payload_json = json.dumps(payload, separators=(',', ':'))
+    payload_hash = base64.b64encode(hashlib.sha256(payload_json.encode()).digest()).decode()
 
-    # 2. Canonical JSON (sorted keys, no whitespace)
-    canonical = json.dumps(message, sort_keys=True, separators=(',', ':')).encode()
+    # 2. Build canonical string
+    canonical = f"{from_addr}|{to_addr}|{subject}|{priority}|{in_reply_to or ''}|{payload_hash}"
 
     # 3. Sign raw canonical bytes (Ed25519 handles hashing internally)
-    signature = private_key.sign(canonical)
+    signature = private_key.sign(canonical.encode('utf-8'))
 
     # 4. Base64 encode
     return base64.b64encode(signature).decode()
@@ -96,18 +113,19 @@ def verify_message(envelope, payload, sender_public_key):
     # 1. Extract signature
     signature = base64.b64decode(envelope["signature"])
 
-    # 2. Recreate message without signature
-    message = {
-        "envelope": {k: v for k, v in envelope.items() if k != "signature"},
-        "payload": payload
-    }
+    # 2. Calculate payload hash
+    payload_json = json.dumps(payload, separators=(',', ':'))
+    payload_hash = base64.b64encode(hashlib.sha256(payload_json.encode()).digest()).decode()
 
-    # 3. Canonical JSON
-    canonical = json.dumps(message, sort_keys=True, separators=(',', ':')).encode()
+    # 3. Recreate canonical string
+    canonical = (
+        f"{envelope['from']}|{envelope['to']}|{envelope['subject']}|"
+        f"{envelope.get('priority', 'normal')}|{envelope.get('in_reply_to', '')}|{payload_hash}"
+    )
 
     # 4. Verify raw canonical bytes
     try:
-        sender_public_key.verify(signature, canonical)
+        sender_public_key.verify(signature, canonical.encode('utf-8'))
         return True
     except InvalidSignature:
         return False

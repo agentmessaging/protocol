@@ -158,89 +158,138 @@ Providers MUST preserve the `context` object as-is; they MUST NOT modify or vali
 
 ## Message Signing
 
-All messages MUST be signed by the sender.
+All messages MUST be signed by the **sending agent** (not the provider).
+
+### Canonical Signature Format (v1.1)
+
+> **Version 1.1 Update:** The signature format was changed from full canonical JSON to selective field signing. This allows clients to sign messages before the server adds metadata (id, timestamp) and enables signatures to survive federation hops unchanged.
+
+The canonical string for signing is:
+
+```
+{from}|{to}|{subject}|{priority}|{in_reply_to}|{payload_hash}
+```
+
+Where:
+- `{from}` - Sender's full AMP address
+- `{to}` - Recipient's full AMP address
+- `{subject}` - Message subject (UTF-8)
+- `{priority}` - Priority level (`low`, `normal`, `high`, `urgent`)
+- `{in_reply_to}` - Message ID being replied to, or empty string if not a reply
+- `{payload_hash}` - Base64(SHA256(JSON.stringify(payload)))
+
+**Example:**
+```
+alice@acme.crabmail.ai|bob@acme.crabmail.ai|Hello|normal||K7gNU3sdo+OL0wNhqoVWhr3g6s1xYv72ol/pe/Unols=
+```
+
+### Rationale for Selective Signing
+
+1. **Client-side signing** - Only the sender can create a valid signature (providers cannot forge messages)
+2. **Server metadata** - Servers add `id` and `timestamp` which the client cannot know in advance
+3. **Federation integrity** - Signature survives provider hops unchanged
+4. **Attack prevention** - Priority and in_reply_to are signed to prevent escalation and thread hijacking
+5. **Standards alignment** - Follows DKIM and HTTP Signatures patterns
 
 ### Signature Process
-
-The signing procedure depends on the key algorithm. Ed25519 performs internal hashing (SHA-512) and MUST receive the raw message bytes — pre-hashing would produce Ed25519ph, which is a different algorithm with different security properties. RSA and ECDSA, by contrast, operate on hashes.
-
-**For Ed25519:**
-
-1. Create canonical form of the message (envelope + payload, sorted keys, no whitespace)
-2. Sign the canonical bytes directly (Ed25519 handles hashing internally)
-3. Base64-encode the signature
-
-**For RSA / ECDSA:**
-
-1. Create canonical form of the message (envelope + payload, sorted keys, no whitespace)
-2. Compute SHA-256 hash of canonical form
-3. Sign the hash with sender's private key
-4. Base64-encode the signature
 
 ```python
 import json
 import hashlib
 from base64 import b64encode
 
-def sign_message(envelope, payload, private_key, algorithm="Ed25519"):
-    # 1. Build signable message (exclude signature field)
-    message = {
-        "envelope": {k: v for k, v in envelope.items() if k != "signature"},
-        "payload": payload
-    }
+def sign_message(from_addr, to_addr, subject, priority, in_reply_to, payload, private_key, algorithm="Ed25519"):
+    # 1. Calculate payload hash
+    payload_json = json.dumps(payload, separators=(',', ':'))
+    payload_hash = b64encode(hashlib.sha256(payload_json.encode()).digest()).decode()
 
-    # 2. Canonical form (sorted keys, no whitespace)
-    canonical = json.dumps(message, sort_keys=True, separators=(',', ':')).encode()
+    # 2. Build canonical string
+    canonical = f"{from_addr}|{to_addr}|{subject}|{priority}|{in_reply_to or ''}|{payload_hash}"
+    canonical_bytes = canonical.encode('utf-8')
 
     # 3. Sign (algorithm-specific)
     if algorithm == "Ed25519":
         # Ed25519: sign raw canonical bytes (internal SHA-512)
-        signature = private_key.sign(canonical)
+        signature = private_key.sign(canonical_bytes)
     else:
         # RSA / ECDSA: sign SHA-256 hash
-        digest = hashlib.sha256(canonical).digest()
+        digest = hashlib.sha256(canonical_bytes).digest()
         signature = private_key.sign(digest)
 
     # 4. Encode
     return b64encode(signature).decode()
 ```
 
+**Bash/OpenSSL Example:**
+```bash
+# Calculate payload hash
+PAYLOAD_HASH=$(echo -n '{"type":"notification","message":"Hello"}' | \
+    openssl dgst -sha256 -binary | base64 | tr -d '\n')
+
+# Build canonical string
+SIGN_DATA="alice@provider.com|bob@provider.com|Hello|normal||${PAYLOAD_HASH}"
+
+# Sign with Ed25519 (requires -rawin flag)
+echo -n "$SIGN_DATA" > /tmp/msg.txt
+openssl pkeyutl -sign -inkey private.pem -rawin -in /tmp/msg.txt | base64 | tr -d '\n'
+```
+
 ### Signature Verification
 
 Recipients MUST verify signatures before trusting a message:
 
-1. Fetch sender's public key from their provider
-2. Recreate canonical form (exclude `signature` field)
+1. Fetch sender's public key from their provider (or use cached key)
+2. Recreate the canonical string from message fields
 3. Verify according to key algorithm
 
 ```python
-from base64 import b64decode
+import json
+import hashlib
+from base64 import b64decode, b64encode
 
 def verify_message(envelope, payload, sender_public_key, algorithm="Ed25519"):
     # 1. Extract signature
     signature = b64decode(envelope["signature"])
 
-    # 2. Recreate signable message
-    message = {
-        "envelope": {k: v for k, v in envelope.items() if k != "signature"},
-        "payload": payload
-    }
+    # 2. Calculate payload hash
+    payload_json = json.dumps(payload, separators=(',', ':'))
+    payload_hash = b64encode(hashlib.sha256(payload_json.encode()).digest()).decode()
 
-    # 3. Canonical form
-    canonical = json.dumps(message, sort_keys=True, separators=(',', ':')).encode()
+    # 3. Recreate canonical string
+    canonical = (
+        f"{envelope['from']}|"
+        f"{envelope['to']}|"
+        f"{envelope['subject']}|"
+        f"{envelope.get('priority', 'normal')}|"
+        f"{envelope.get('in_reply_to', '')}|"
+        f"{payload_hash}"
+    )
+    canonical_bytes = canonical.encode('utf-8')
 
     # 4. Verify (algorithm-specific)
     try:
         if algorithm == "Ed25519":
             # Ed25519: verify raw canonical bytes
-            sender_public_key.verify(signature, canonical)
+            sender_public_key.verify(signature, canonical_bytes)
         else:
             # RSA / ECDSA: verify SHA-256 hash
-            digest = hashlib.sha256(canonical).digest()
+            digest = hashlib.sha256(canonical_bytes).digest()
             sender_public_key.verify(signature, digest)
         return True
     except InvalidSignature:
         return False
+```
+
+**Bash/OpenSSL Verification:**
+```bash
+# Reconstruct canonical string from received message
+PAYLOAD_HASH=$(echo -n "$PAYLOAD_JSON" | openssl dgst -sha256 -binary | base64 | tr -d '\n')
+SIGN_DATA="${FROM}|${TO}|${SUBJECT}|${PRIORITY}|${IN_REPLY_TO}|${PAYLOAD_HASH}"
+
+# Verify with Ed25519 (requires -rawin flag)
+echo -n "$SIGN_DATA" > /tmp/verify.txt
+echo "$SIGNATURE" | base64 -d > /tmp/sig.bin
+openssl pkeyutl -verify -pubin -inkey sender_public.pem -rawin -in /tmp/verify.txt -sigfile /tmp/sig.bin
 ```
 
 ### Sender Address Validation
