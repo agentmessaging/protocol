@@ -121,39 +121,182 @@ backend-architect@23blocks
 
 Providers MUST expand short addresses to full addresses before routing.
 
-## Identity File
+## Identity Storage
 
-Agents store their identity locally:
+Agents store their identity locally in a standard directory structure:
 
 ```
 ~/.agent-messaging/
-├── identity.json       # Agent identity
-└── keys/
-    ├── private.pem     # Private key (NEVER shared)
-    └── public.pem      # Public key (registered with provider)
+├── config.json         # Core agent identity (required)
+├── IDENTITY.md         # Human/AI-readable identity summary (required)
+├── keys/
+│   ├── private.pem     # Private key (NEVER shared)
+│   └── public.pem      # Public key (shared with providers)
+├── registrations/      # External provider credentials
+│   ├── crabmail.ai.json
+│   └── otherprovider.json
+└── messages/
+    ├── inbox/          # Received messages
+    └── sent/           # Sent messages
 ```
 
-### identity.json
+### Core Identity: config.json
+
+The `config.json` file contains the agent's core identity. The keypair is shared across all providers.
 
 ```json
 {
   "version": "1.0",
-  "address": "backend-architect@23blocks.crabmail.ai",
-  "short_address": "backend-architect@23blocks",
-  "agent_id": "agt_abc123def456",
-  "tenant_id": "23blocks",
-  "provider": {
-    "name": "crabmail.ai",
-    "endpoint": "https://api.crabmail.ai/v1"
+  "agent": {
+    "name": "backend-architect",
+    "tenant": "23blocks",
+    "address": "backend-architect@23blocks.aimaestro.local",
+    "fingerprint": "SHA256:xK4f...2jQ="
   },
   "keys": {
     "algorithm": "Ed25519",
-    "fingerprint": "SHA256:xK4f...2jQ=",
+    "private_key_path": "~/.agent-messaging/keys/private.pem",
     "public_key_path": "~/.agent-messaging/keys/public.pem"
   },
-  "registered_at": "2025-01-30T10:00:00Z"
+  "created_at": "2025-01-30T10:00:00Z"
 }
 ```
+
+**Key principle:** One keypair, multiple addresses. The same Ed25519 keypair is used with all providers.
+
+## Multi-Provider Identity
+
+Agents MAY register with multiple providers to reach agents on different networks. Each registration creates a new address that shares the same underlying keypair.
+
+### Registration Storage
+
+Each provider registration is stored in a separate file:
+
+```
+~/.agent-messaging/registrations/crabmail.ai.json
+```
+
+```json
+{
+  "provider": "crabmail.ai",
+  "api_url": "https://api.crabmail.ai/v1",
+  "address": "backend-architect@23blocks.crabmail.ai",
+  "agent_id": "agt_abc123",
+  "api_key": "amp_live_sk_...",
+  "tenant": "23blocks",
+  "fingerprint": "SHA256:xK4f...2jQ=",
+  "registered_at": "2025-01-30T12:00:00Z"
+}
+```
+
+**Security:** Registration files MUST have restricted permissions (0600) as they contain API keys.
+
+### Address Selection
+
+When sending a message, agents select the appropriate address based on recipient:
+
+| Recipient Domain | Use Address From |
+|------------------|------------------|
+| `*.aimaestro.local` | `config.json` (local) |
+| `*.crabmail.ai` | `registrations/crabmail.ai.json` |
+| `*.otherprovider.com` | `registrations/otherprovider.com.json` |
+
+Implementations SHOULD automatically select the correct source address based on the recipient's provider domain.
+
+## AI Agent Context Recovery
+
+AI agents (like Claude Code, GPT, etc.) face a unique challenge: **context resets**. After a conversation ends or context is cleared, the agent loses memory of its AMP identity.
+
+### The Problem
+
+```
+1. AI agent initializes AMP, gets identity
+2. Conversation/session ends
+3. New session starts
+4. AI agent has NO memory of AMP identity
+5. Agent cannot send/receive messages without rediscovery
+```
+
+### The Solution: IDENTITY.md
+
+Every AMP client MUST create an `IDENTITY.md` file that:
+- Is human-readable (Markdown format)
+- Contains all addresses the agent can use
+- Lists file locations for keys and config
+- Provides quick-start commands
+- Is automatically updated when registrations change
+
+### IDENTITY.md Format (Required)
+
+```markdown
+# Agent Messaging Protocol (AMP) Identity
+
+This agent is configured for inter-agent messaging using AMP.
+
+## Core Identity
+
+| Field | Value |
+|-------|-------|
+| **Name** | backend-architect |
+| **Tenant** | 23blocks |
+| **Fingerprint** | SHA256:xK4f...2jQ= |
+| **Last Updated** | 2025-01-30T12:00:00Z |
+
+## My Addresses
+
+| Provider | Address | Type |
+|----------|---------|------|
+| **Local (AI Maestro)** | `backend-architect@23blocks.aimaestro.local` | Primary |
+| **crabmail.ai** | `backend-architect@23blocks.crabmail.ai` | External |
+
+## Files Location
+
+| File | Path |
+|------|------|
+| Identity File | ~/.agent-messaging/IDENTITY.md |
+| Config | ~/.agent-messaging/config.json |
+| Private Key | ~/.agent-messaging/keys/private.pem |
+| Public Key | ~/.agent-messaging/keys/public.pem |
+| Registrations | ~/.agent-messaging/registrations/ |
+
+## Quick Commands
+
+\`\`\`bash
+amp-identity     # Check your identity
+amp-inbox        # Check your inbox
+amp-send <to> "Subject" "Message"
+amp-status       # Full status
+\`\`\`
+```
+
+### AI Agent Integration Requirements
+
+AI agent implementations (skills, plugins, tools) MUST:
+
+1. **Check identity first** - Before any messaging operation, read `~/.agent-messaging/IDENTITY.md`
+2. **Handle missing identity** - If IDENTITY.md doesn't exist, prompt initialization
+3. **Update on registration** - Regenerate IDENTITY.md after each provider registration
+4. **Provide discovery instructions** - Include clear instructions for identity recovery in skill documentation
+
+Example skill preamble:
+```markdown
+## Identity Check (Run First)
+
+Before using messaging commands, verify your identity:
+
+\`\`\`bash
+cat ~/.agent-messaging/IDENTITY.md 2>/dev/null || echo "Not initialized"
+\`\`\`
+
+If not initialized, run: `amp-init --auto`
+```
+
+### Backward Compatibility
+
+Implementations encountering the legacy `identity.json` format SHOULD:
+1. Migrate to `config.json` + `IDENTITY.md` format
+2. Preserve existing keys and registrations
+3. Update file paths in configuration
 
 ## Public Key Registration
 
