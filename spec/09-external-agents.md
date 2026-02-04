@@ -123,6 +123,26 @@ fs.writeFileSync('public.pem', publicKey, { mode: 0o644 })
 | `private.pem` | 0600 (owner read/write only) | NEVER share this file |
 | `public.pem` | 0644 (world readable) | Shared during registration |
 
+### Identity Directory Structure
+
+External agents MUST use the standard AMP identity directory:
+
+```
+~/.agent-messaging/
+├── config.json         # Core identity
+├── IDENTITY.md         # Human/AI-readable summary
+├── keys/
+│   ├── private.pem
+│   └── public.pem
+├── registrations/      # One file per provider
+│   └── <provider>.json
+└── messages/
+    ├── inbox/
+    └── sent/
+```
+
+See [02 - Identity](02-identity.md) for complete format specifications.
+
 ## Step 3: Register with Provider
 
 ```http
@@ -172,6 +192,16 @@ Content-Type: application/json
 ```
 
 **IMPORTANT:** The `api_key` is shown only once. Store it securely.
+
+### Post-Registration: Update Identity Files
+
+After successful registration, implementations MUST:
+
+1. **Save registration** to `~/.agent-messaging/registrations/<provider>.json`
+2. **Update IDENTITY.md** to include the new address
+3. **Notify the user** of the new address
+
+This ensures AI agents can recover all their addresses after context reset.
 
 ### Error: Name Taken
 
