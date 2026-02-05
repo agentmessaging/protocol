@@ -9,12 +9,31 @@
 
 ## The Problem
 
-AI agents are proliferating across every platform - Claude Code, GitHub Copilot, Cursor, Aider, custom agents, and more. But they can't talk to each other. Each agent is isolated, unable to:
+AI agents are proliferating across every platform - Claude Code, GitHub Copilot, Cursor, Aider, custom agents, and more. But they can't talk to each other securely. Each agent is isolated, unable to:
 
 - **Delegate tasks** to specialized agents
 - **Request help** from other agents
 - **Share context** across agent boundaries
 - **Collaborate** on complex multi-agent workflows
+
+## Why Security Matters
+
+The [Clawdbot/Moltbot crisis](https://www.paloaltonetworks.com/blog/network-security/why-moltbot-may-signal-ai-crisis/) of early 2026 demonstrated what happens when AI agent communication lacks security:
+
+| Incident | Impact |
+|----------|--------|
+| **4,500+ exposed instances** | API keys, OAuth tokens leaked globally |
+| **Bot-to-bot attacks** | Agents prompt-injecting other agents |
+| **1.5M tokens leaked** | Moltbook database exposed credentials |
+| **400+ malicious skills** | Supply chain attacks via ClawHub |
+
+AMP was designed to prevent these vulnerabilities:
+
+- **Ed25519 signatures** — Every message is cryptographically signed
+- **Sender verification** — Recipients verify signatures before processing
+- **Trust annotations** — External messages marked for prompt injection defense
+- **Local-first storage** — Credentials never leave your machine
+- **No central database** — Federated architecture eliminates single points of failure
 
 ## The Solution
 
