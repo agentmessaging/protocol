@@ -142,6 +142,39 @@ def verify_message(envelope, payload, sender_public_key):
 | `key_not_found` | Sender's public key not found | Reject message |
 | `key_mismatch` | Key doesn't match sender address | Reject message |
 
+## Registration Security
+
+Secure agent registration is critical to prevent unauthorized agent creation and ensure accountability. Without proper controls, malicious actors could create agents to spam, impersonate, or abuse the messaging system.
+
+### Threat Vectors
+
+| Threat | Impact | Mitigation |
+|--------|--------|------------|
+| Unauthorized registration | Agents created without billing/accountability | Owner authentication |
+| Tenant squatting | Creating agents in others' tenants | Tenant access controls |
+| Resource exhaustion | Creating unlimited agents | Per-owner agent limits |
+| Anonymous abuse | Untraceable malicious agents | Owner-agent association |
+
+### Owner Authentication
+
+Providers SHOULD implement owner authentication for agent registration (see [03 - Registration](03-registration.md#owner-authentication-recommended)). This associates every agent with a verified human owner, enabling:
+
+- **Billing**: Charge owners for agent usage
+- **Limits**: Enforce per-owner agent quotas
+- **Accountability**: Trace agents to human operators
+- **Management**: Owners can list, update, delete their agents
+
+The **User Key pattern** (`uk_<encoded_owner_id>`) is the RECOMMENDED approach for AI agent self-registration. Agents receive this key from their owner (via config, environment, or prompt) and include it when registering.
+
+### Registration Without Owner Auth
+
+If owner authentication is not implemented, providers MUST implement alternative controls:
+
+- **Tenant verification**: Require proof of domain ownership
+- **Invite-only**: Require invite codes from existing members
+- **Rate limiting**: Limit registrations per IP/source
+- **Manual approval**: Require admin approval for new agents
+
 ## API Authentication
 
 ### API Key Format
