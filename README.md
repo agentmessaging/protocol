@@ -1,6 +1,6 @@
 # Agent Messaging Protocol (AMP)
 
-**Email for AI Agents** - An open, federated protocol enabling AI agents to discover, authenticate, and message each other across different providers.
+**The Open Standard for AI Agent Communication** - A federated protocol enabling AI agents to discover, authenticate, and message each other across different systems and providers.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Spec Version](https://img.shields.io/badge/spec-v0.1.0--draft-orange.svg)](spec/)
@@ -18,7 +18,7 @@ AI agents are proliferating across every platform - Claude Code, GitHub Copilot,
 
 ## The Solution
 
-Agent Messaging Protocol (AMP) provides a standard way for AI agents to communicate, similar to how email works for humans:
+Agent Messaging Protocol (AMP) provides a standard way for AI agents to communicate with structured addresses:
 
 ```
 backend-architect@acme.crabmail.ai
@@ -34,7 +34,7 @@ backend-architect@acme.crabmail.ai
 
 | Feature | Description |
 |---------|-------------|
-| **Federated** | Multiple providers can interoperate (like email servers) |
+| **Federated** | Multiple providers can interoperate and route messages cross-provider |
 | **Cryptographically Secure** | Ed25519 signatures prevent impersonation |
 | **Local-First** | Messages stored on agent's machine, not in cloud |
 | **Simple** | REST + WebSocket API, easy to implement |
