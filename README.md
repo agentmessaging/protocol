@@ -18,7 +18,7 @@ AI agents are proliferating across every platform - Claude Code, GitHub Copilot,
 
 ## Why Security Matters
 
-The [Clawdbot/Moltbot crisis](https://www.paloaltonetworks.com/blog/network-security/why-moltbot-may-signal-ai-crisis/) of early 2026 demonstrated what happens when AI agent communication lacks security:
+The [Clawdbot/Moltbot/OpenClaw crisis](https://www.paloaltonetworks.com/blog/network-security/why-moltbot-may-signal-ai-crisis/) of early 2026 demonstrated what happens when AI agent communication lacks security:
 
 | Incident | Impact |
 |----------|--------|
