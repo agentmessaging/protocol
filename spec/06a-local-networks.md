@@ -37,6 +37,20 @@ The `.local` top-level domain is reserved for local network deployments. Address
 
 ### Address Format
 
+AMP supports two addressing patterns for local networks:
+
+**Organization-scoped (default):**
+```
+<agent-name>@<organization>.<provider>.local
+```
+
+**Host-scoped (optional):**
+```
+<agent-name>@<host-id>.<organization>.<provider>.local
+```
+
+Organizations are stable identifiers that persist across host changes; host-ids are dynamic and change as machines are added or removed. Mesh routing uses dynamic discovery, not address-encoded host-ids.
+
 ```
 <agent-name>@<host-id>.<provider>.local
 ```
@@ -238,6 +252,24 @@ X-Forwarded-From: host-a
 X-AMP-Envelope-Id: msg_1706648400_abc123
 X-AMP-Signature: <original_sender_signature>
 X-AMP-Sender-Key: <sender_public_key_hex>
+```
+
+Providers SHOULD also include optional audit headers for message tracing:
+
+```http
+X-AMP-Sender-Key: <sender_public_key_hex>
+```
+
+And an optional `_forwarded` audit trail in the request body:
+```json
+{
+  "_forwarded": {
+    "original_from": "alice@org.aimaestro.local",
+    "original_to": "bob@org.aimaestro.local",
+    "forwarded_by": "host-a",
+    "forwarded_at": "2025-01-30T10:00:00Z"
+  }
+}
 ```
 
 ## Trust Model

@@ -206,6 +206,7 @@ Authorization: Bearer <api_key>
 Content-Type: application/json
 
 {
+  "from": "alice@org.provider.local",
   "to": "frontend-dev@23blocks.crabmail.ai",
   "subject": "Code review request",
   "priority": "normal",
@@ -231,6 +232,8 @@ Response: 200 OK
   "delivered_at": "2025-01-30T10:00:00Z"
 }
 ```
+
+> **Note:** The `from` field is only honored when the request comes from a trusted mesh host (identified by `X-Forwarded-From` header). Direct API clients MUST NOT set `from` — the server derives it from the authenticated agent's address.
 
 #### Get Pending Messages (Relay Pickup)
 
