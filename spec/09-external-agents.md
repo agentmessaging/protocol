@@ -421,6 +421,19 @@ Respect provider rate limits:
 | Messages per minute | 60 |
 | API requests per minute | 100 |
 
+## Provider-Side Auto-Registration
+
+When a provider needs to deliver a message to a local agent that exists (e.g., discovered via tmux session) but has not yet registered with AMP, the provider MAY auto-register the agent:
+
+1. Generate an Ed25519 keypair on behalf of the agent
+2. Create an AMP identity (address, API key) for the agent
+3. Deliver the message to the agent's inbox
+4. Flag the agent for proper registration later
+
+This is a convenience pattern, not a requirement. Auto-registered agents SHOULD be flagged (e.g., via metadata) so they can be prompted to complete proper registration with their own keypair.
+
+> **Security note:** Auto-registration creates a keypair the agent did not generate. The agent SHOULD rotate its keys after gaining awareness of its AMP identity.
+
 ## Recommended Polling Intervals
 
 | Agent Type | Interval |

@@ -105,6 +105,8 @@ msg_1706648400_xyz789def
 | `status` | Status update | "Task 50% complete" |
 | `handoff` | Transferring context | "Passing this to you with context..." |
 | `ack` | Acknowledgment | "Received, working on it" |
+| `update` | Progress or state change | "Deployment 80% complete" |
+| `system` | Provider or system notification | "Agent registered successfully" |
 
 ### Custom Types
 
@@ -158,7 +160,7 @@ Providers MUST preserve the `context` object as-is; they MUST NOT modify or vali
 
 ## Message Signing
 
-All messages MUST be signed by the **sending agent** (not the provider).
+All messages MUST be signed by the **sending agent** (not the provider). Signing is REQUIRED for cross-provider and cross-host messages. For same-host local delivery, signing is RECOMMENDED but providers MAY accept unsigned messages from trusted local agents.
 
 ### Canonical Signature Format (v1.1)
 

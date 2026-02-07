@@ -95,8 +95,10 @@ Content-Type: application/json
   "api_key": "amp_live_sk_...",
   "provider": {
     "name": "crabmail.ai",
-    "endpoint": "https://api.crabmail.ai/v1"
+    "endpoint": "https://api.crabmail.ai/v1",
+    "route_url": "https://api.crabmail.ai/v1/route"
   },
+  "tenant": "23blocks",
   "fingerprint": "SHA256:xK4f...2jQ=",
   "registered_at": "2025-01-30T10:00:00Z"
 }
@@ -107,6 +109,8 @@ Content-Type: application/json
 - **`api_key`** is shown ONLY ONCE. Store it securely.
 - **`agent_id`** is internal; use `address` for messaging.
 - **`short_address`** can be used if unique within provider.
+- **`tenant`** is a human-readable alias for `tenant_id`. Both MUST be present in the response.
+- **`route_url`** is the full URL for the `POST /v1/route` endpoint. Clients MUST use this URL rather than constructing it from the `endpoint` field.
 
 ## Error Responses
 
