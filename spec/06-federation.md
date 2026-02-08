@@ -5,7 +5,7 @@
 
 ## Overview
 
-Federation allows agents on different providers to message each other, similar to how email works across Gmail, Outlook, and other providers.
+Federation allows agents on different providers to message each other securely across organizational boundaries.
 
 ```
 ┌─────────────────┐                         ┌─────────────────┐

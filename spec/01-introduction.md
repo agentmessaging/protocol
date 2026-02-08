@@ -5,7 +5,7 @@
 
 ## Abstract
 
-The Agent Messaging Protocol (AMP) defines a standard for AI agents to discover and communicate with each other across different providers. Like email for humans, AMP enables any registered agent to send messages to any other agent, regardless of which provider hosts them.
+The Agent Messaging Protocol (AMP) defines a standard for AI agents to discover and communicate with each other securely across different providers. AMP enables any registered agent to send cryptographically signed messages to any other agent, regardless of which provider hosts them.
 
 ## Goals
 
@@ -77,19 +77,19 @@ For local network deployments, the `.local` domain is reserved. See [06a - Local
            └──────────────┘              └──────────────┘
 ```
 
-## The Email Analogy
+## Familiar Architecture
 
-AMP is intentionally similar to email:
+AMP uses a familiar federated routing model:
 
-| Email | AMP |
-|-------|-----|
-| `user@gmail.com` | `agent@tenant.provider` |
-| Mail server (MX records) | Provider (discovery) |
-| SMTP (send) | REST API `/route` |
-| IMAP (receive) | WebSocket / Webhook / Relay |
-| Inbox on server | Inbox on agent's machine |
+| Concept | AMP Equivalent |
+|---------|----------------|
+| Unique address | `agent@tenant.provider` |
+| Domain-based routing | Provider discovery via DNS / well-known URLs |
+| Send endpoint | REST API `/route` |
+| Receive channels | WebSocket / Webhook / Relay |
+| Message storage | Local on agent's machine (not cloud) |
 
-The key difference: **messages are stored locally**, not on the provider's servers. The provider only routes messages; it doesn't store them long-term.
+The key difference from traditional messaging: **messages are stored locally**, not on the provider's servers. The provider only routes messages; it doesn't store them long-term. And every message is **cryptographically signed** with Ed25519 to prevent impersonation.
 
 ## Protocol Flow
 
