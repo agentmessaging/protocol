@@ -333,7 +333,11 @@ Content-Type: application/json
   "size": 1827341,
   "digest": "sha256:3b2c9f5da87e4f1c8b0a2d6e9f3c7a1b5d8e2f4a6c0b3d7e9f1a4c6d8e0b2a4"
 }
+```
 
+Providers MUST validate the `digest` field format at upload time. The `digest` MUST use the `sha256:` prefix followed by a lowercase hexadecimal hash. Providers MUST reject uploads with unrecognized algorithm prefixes (e.g., `md5:`, `sha1:`) with HTTP 422 and error code `invalid_digest_algorithm`.
+
+```http
 Response: 201 Created
 {
   "attachment_id": "att_1706648400_abc123",
@@ -351,7 +355,7 @@ The agent uploads the file directly to the `upload_url` using the specified `upl
 **Presigned URL security requirements:**
 
 - Presigned upload URLs MUST expire within 1 hour (`expires_in` MUST NOT exceed 3600).
-- Presigned upload URLs SHOULD be single-use; providers SHOULD reject a second PUT to the same URL.
+- Presigned upload URLs MUST be single-use; providers MUST reject a second PUT to the same URL.
 - Providers SHOULD set a `Content-Length` constraint on presigned URLs (e.g., S3 upload conditions) to reject uploads that exceed the declared `size` by more than 1%. This prevents a malicious agent from declaring a small size but uploading a large file.
 - Providers SHOULD bind presigned URLs to the authenticated agent's IP address where feasible.
 
@@ -372,7 +376,7 @@ Response: 200 OK
 
 #### Check Scan Status
 
-Poll for scan completion. When `scan_status` is `clean` or `suspicious`, the response includes a `url` field with the signed download URL. Agents SHOULD poll every 2-5 seconds. Providers SHOULD complete scanning within 60 seconds for files under 25 MB. If `scan_status` remains `pending` after 5 minutes, agents SHOULD treat it as a transient failure and may retry the upload.
+Poll for scan completion. When `scan_status` is `clean` or `suspicious`, the response includes a `url` field with the signed download URL. Agents SHOULD poll every 2-5 seconds. Providers SHOULD complete scanning within 60 seconds for files under 25 MB. If `scan_status` remains `pending` after 5 minutes, agents MUST stop polling and treat it as a transient failure. To retry, agents MUST create a new upload request (new attachment ID); reusing the same attachment ID is not permitted. Agents SHOULD apply exponential backoff if multiple retries fail.
 
 ```http
 GET /v1/attachments/att_1706648400_abc123
@@ -394,7 +398,7 @@ Response: 200 OK
 
 > **Note:** The `url` field in the API response matches the `url` field in the attachment object within the message payload (see [04 - Messages](04-messages.md#attachment-fields)). Agents MUST use this value when building the payload `attachments` array.
 
-Possible `scan_status` values: `pending`, `clean`, `suspicious`, `rejected`.
+Possible `scan_status` values: `pending`, `clean`, `suspicious`, `rejected`. Scan status transitions are one-directional: `pending` → `clean` | `suspicious` | `rejected`. Once a scan status has been set to a terminal value, providers MUST NOT change it.
 
 #### Download Attachment
 
@@ -656,6 +660,8 @@ The server MUST close the connection if no valid `auth` message is received with
 | `attachment_not_found` | 404 | Attachment ID not found |
 | `attachment_expired` | 410 | Attachment existed but has expired |
 | `attachment_pending` | 409 | Attachment scan not yet complete |
+| `attachment_already_used` | 409 | Attachment ID already referenced by another routed message |
+| `invalid_digest_algorithm` | 422 | Digest algorithm not supported (use `sha256:`) |
 | `attachments_not_supported` | 422 | Provider does not support attachments |
 | `internal_error` | 500 | Server error |
 

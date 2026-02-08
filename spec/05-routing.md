@@ -227,6 +227,10 @@ def verify_webhook(payload, signature, secret, timestamp):
     return hmac.compare_digest(f"sha256={expected}", signature)
 ```
 
+#### Attachments in Webhook Payloads
+
+When delivering a message with attachments via webhook, the `payload` MUST include the full `attachments` array with all metadata fields (including `url` download links). Webhook payloads contain attachment **metadata only** — file content is NOT included in the webhook body. Recipients download attachment files separately using the `url` field.
+
 ### Webhook Response
 
 | Status Code | Meaning | Action |

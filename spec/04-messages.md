@@ -214,7 +214,7 @@ The `attachments` array is a field within the `payload` object:
 | `url` | string | Yes | Provider-signed download URL |
 | `scan_status` | enum | Yes | Security scan result: `clean`, `suspicious`, or `rejected` |
 | `uploaded_at` | string | Yes | ISO 8601 timestamp of when the file was uploaded |
-| `expires_at` | string | Yes | ISO 8601 expiration timestamp (7 days after **routing**, reset by provider on delivery) |
+| `expires_at` | string | Yes | ISO 8601 expiration timestamp (set by the agent, typically 7 days from upload; providers MUST NOT modify this field after routing — see [Attachment Signing Flow](#attachment-signing-flow)) |
 
 ### Attachment Rules
 
@@ -225,9 +225,9 @@ The `attachments` array is a field within the `payload` object:
 - In routed message payloads, `scan_status` MUST be `clean` or `suspicious` — never `pending` or `rejected`. The `pending` status is valid only in upload API responses before routing.
 - Filenames MUST NOT contain path separators (`/`, `\`), null bytes, or control characters. Providers MUST sanitize filenames by stripping or replacing characters not in the set `[a-zA-Z0-9._-]`. Filenames MUST NOT match reserved OS names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`-`COM9`, `LPT1`-`LPT9` on Windows). Leading and trailing dots and spaces MUST be stripped. Double-encoded path separators (e.g., `%2F`) MUST be rejected.
 - Attachment IDs follow the format `att_<unix_timestamp>_<random_hex>`. Agents and providers MUST validate attachment IDs against path traversal (reject IDs containing `/`, `\`, `..`, or null bytes) before using them in filesystem paths.
-- Each attachment ID MUST be referenced by at most one message. Providers MUST reject a `/route` request that references an attachment ID already associated with a previously routed message.
-- The 7-day attachment TTL starts when the message is **routed**, not when the file is uploaded. Providers MUST reset the expiration clock on the attachment when the message is accepted for delivery.
-- Providers MUST delete uploaded attachments that are not referenced by a routed message within **1 hour** of upload confirmation. This prevents orphaned files from consuming storage indefinitely.
+- Each attachment ID MUST be referenced by at most one message. Providers MUST reject a `/route` request that references an attachment ID already associated with a previously routed message. Retrying the same `/route` request (same message, same attachments) after a transient failure does not count as reuse.
+- The 7-day attachment TTL starts when the message is **routed**, not when the file is uploaded. The `expires_at` value in the payload is set by the sending agent at upload time and MUST NOT be modified by providers after routing (modifying payload fields would invalidate the message signature).
+- Providers MUST delete uploaded attachments that are not referenced by a routed message within **2 hours** of upload confirmation. This prevents orphaned files from consuming storage indefinitely while allowing sufficient time for multi-attachment upload workflows.
 
 ### Example Message with Attachments
 

@@ -397,7 +397,7 @@ scan_status = clean | suspicious | rejected
 ```
 
 - **Malware scan** (MUST): Providers MUST scan files with antivirus software (e.g., ClamAV) before routing.
-- **File type verification** (MUST): Providers MUST verify that the file's magic bytes match the declared `content_type`. Mismatches MUST result in `rejected` status.
+- **File type verification** (MUST): Providers MUST verify that the file's magic bytes match the declared `content_type` at the primary type level (e.g., a file with image magic bytes declared as `text/plain` is a mismatch). Files declared as `application/octet-stream` are exempt from magic byte verification. Empty files (0 bytes) are exempt from magic byte verification. Mismatches at the primary type level MUST result in `rejected` status.
 - **Size and digest verification** (MUST): Providers MUST verify that the file size matches `size` and that `SHA256(file_bytes)` matches `digest`.
 - **Prompt injection scan** (SHOULD): For text-extractable files (PDF, DOCX, TXT, CSV, JSON, XML, HTML, Markdown), providers SHOULD extract text content and scan for injection patterns from [Appendix A](appendix-a-injection-patterns.md). Files flagged with injection patterns SHOULD be marked `suspicious` (not `rejected`) so the recipient agent can make a trust decision.
 - **Executable detection** (MUST): Providers MUST reject files that are executable, regardless of declared MIME type.
