@@ -406,6 +406,8 @@ scan_status = clean | suspicious | rejected
 
 Providers MUST reject uploads with the following MIME types:
 
+**Executables (MUST block):**
+
 | MIME Type | Description |
 |-----------|-------------|
 | `application/x-executable` | Unix executables |
@@ -413,12 +415,30 @@ Providers MUST reject uploads with the following MIME types:
 | `application/x-msdownload` | Windows DLLs and executables |
 | `application/x-dosexec` | DOS/Windows PE variant |
 | `application/vnd.microsoft.portable-executable` | Windows PE executables |
+| `application/x-mach-o-executable` | macOS Mach-O binaries |
+
+**Scripts (MUST block):**
+
+| MIME Type | Description |
+|-----------|-------------|
 | `application/x-sh` | Shell scripts |
 | `application/x-shellscript` | Shell scripts (alternate) |
+| `application/x-csh` | C shell scripts |
+| `application/x-perl` | Perl scripts |
 | `application/x-python-code` | Compiled Python bytecode |
-| `application/java-archive` | Java JAR files (executable) |
+| `application/hta` | HTML Applications (Windows) |
 
-Providers MAY extend this list with additional blocked types. Providers SHOULD also reject files whose magic bytes indicate an executable format even when the declared MIME type is not on this list.
+**Packages and archives with executable content (SHOULD block):**
+
+| MIME Type | Description |
+|-----------|-------------|
+| `application/java-archive` | Java JAR files (executable) |
+| `application/vnd.apple.installer+xml` | macOS installer packages |
+| `application/x-rpm` | RPM packages |
+| `application/x-deb` | Debian packages |
+| `application/x-msi` | Windows Installer packages |
+
+Providers MAY extend this list with additional blocked types. Providers MUST also reject files whose magic bytes indicate an executable format even when the declared MIME type is not on this list.
 
 ### Prompt Injection in Attachments
 
@@ -434,8 +454,9 @@ When an agent receives a message with one or more `suspicious` attachments, it S
 
 1. **Log the flags** — Record the `injection_flags` from security metadata for audit.
 2. **Display a warning** — Present a clear warning to the consuming agent or user that the attachment was flagged.
-3. **Do not auto-process** — Agents MUST NOT automatically extract, execute, or follow instructions from suspicious attachments. Content SHOULD be presented as read-only data.
-4. **Wrap content** — If the agent processes the attachment text, wrap it in `<external-content trust="suspicious">` tags with the injection flags noted.
+3. **Do not auto-process** — Agents MUST NOT automatically extract, execute, or follow instructions from suspicious attachments. Specifically, AI agents MUST NOT use content from suspicious attachments as input for tool calls, code execution, file operations, or action planning. Content SHOULD be presented to the human operator for manual review.
+4. **Wrap content** — If the agent displays the attachment text, wrap it in `<external-content trust="suspicious">` tags with the injection flags noted.
+5. **Require human approval** — AI agents SHOULD NOT process suspicious attachment content further without explicit confirmation from the human operator.
 
 ### Attachment Security Metadata
 

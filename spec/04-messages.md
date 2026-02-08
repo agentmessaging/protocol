@@ -163,6 +163,19 @@ Providers MUST preserve the `context` object as-is; they MUST NOT modify or vali
 
 Messages MAY include file attachments. Attachment file content is stored externally by the provider; only metadata appears in the message JSON. The `attachments` array lives inside the `payload`, so it is automatically covered by `payload_hash` in the message signature. No changes to the signing process are needed.
 
+### Attachment Signing Flow
+
+Because the `payload_hash` covers the entire serialized payload (including the `attachments` array), the client MUST build the complete payload — with all attachment metadata fields — before signing. The recommended flow is:
+
+1. Upload each file via `POST /v1/attachments/upload` and `POST /v1/attachments/{id}/confirm`.
+2. Poll `GET /v1/attachments/{id}` until `scan_status` is `clean` or `suspicious`.
+3. Retrieve the full attachment object (including provider-assigned `url`, `scan_status`, `uploaded_at`, `expires_at`).
+4. Build the `payload` object with the complete `attachments` array.
+5. Compute `payload_hash` = Base64(SHA256(JSON.stringify(payload))).
+6. Sign the canonical string and send via `/v1/route`.
+
+Providers MUST NOT modify attachment fields within the `payload` after the message is routed. Provider-side metadata (such as security scan details) belongs in `local.security`, not in the payload.
+
 ### Attachment Object
 
 The `attachments` array is a field within the `payload` object:
@@ -181,7 +194,7 @@ The `attachments` array is a field within the `payload` object:
         "digest": "sha256:3b2c9f5da87e4f1c8b0a2d6e9f3c7a1b5d8e2f4a6c0b3d7e9f1a4c6d8e0b2a4",
         "url": "https://cdn.crabmail.ai/attachments/att_1706648400_abc123?token=<signed_token>",
         "scan_status": "clean",
-        "uploaded_at": "2025-01-30T10:00:00Z",
+        "uploaded_at": "2025-01-30T09:58:00Z",
         "expires_at": "2025-02-06T10:00:00Z"
       }
     ]
@@ -197,11 +210,11 @@ The `attachments` array is a field within the `payload` object:
 | `filename` | string | Yes | Original filename (max 255 characters, sanitized) |
 | `content_type` | string | Yes | MIME type (e.g., `text/plain`, `application/pdf`) |
 | `size` | integer | Yes | File size in bytes |
-| `digest` | string | Yes | Content hash in the format `sha256:<hex>` |
+| `digest` | string | Yes | Content hash in the format `<algorithm>:<hex>` (currently `sha256:<hex>`; see [Digest Algorithm](#digest-algorithm)) |
 | `url` | string | Yes | Provider-signed download URL |
 | `scan_status` | enum | Yes | Security scan result: `clean`, `suspicious`, or `rejected` |
 | `uploaded_at` | string | Yes | ISO 8601 timestamp of when the file was uploaded |
-| `expires_at` | string | Yes | ISO 8601 expiration timestamp (default: 7 days after upload) |
+| `expires_at` | string | Yes | ISO 8601 expiration timestamp (7 days after **routing**, reset by provider on delivery) |
 
 ### Attachment Rules
 
@@ -210,10 +223,11 @@ The `attachments` array is a field within the `payload` object:
 - Maximum **100 MB** total attachment size per message.
 - Providers MUST NOT route messages where any attachment has `scan_status: rejected`.
 - In routed message payloads, `scan_status` MUST be `clean` or `suspicious` — never `pending` or `rejected`. The `pending` status is valid only in upload API responses before routing.
-- Filenames MUST NOT contain path separators (`/`, `\`), null bytes, or control characters.
+- Filenames MUST NOT contain path separators (`/`, `\`), null bytes, or control characters. Providers MUST sanitize filenames by stripping or replacing characters not in the set `[a-zA-Z0-9._-]`. Filenames MUST NOT match reserved OS names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`-`COM9`, `LPT1`-`LPT9` on Windows). Leading and trailing dots and spaces MUST be stripped. Double-encoded path separators (e.g., `%2F`) MUST be rejected.
 - Attachment IDs follow the format `att_<unix_timestamp>_<random_hex>`. Agents and providers MUST validate attachment IDs against path traversal (reject IDs containing `/`, `\`, `..`, or null bytes) before using them in filesystem paths.
-- Each attachment ID MAY be referenced by only one message. Providers MUST reject a `/route` request that references an attachment ID already associated with a previously routed message.
+- Each attachment ID MUST be referenced by at most one message. Providers MUST reject a `/route` request that references an attachment ID already associated with a previously routed message.
 - The 7-day attachment TTL starts when the message is **routed**, not when the file is uploaded. Providers MUST reset the expiration clock on the attachment when the message is accepted for delivery.
+- Providers MUST delete uploaded attachments that are not referenced by a routed message within **1 hour** of upload confirmation. This prevents orphaned files from consuming storage indefinitely.
 
 ### Example Message with Attachments
 
@@ -249,7 +263,7 @@ The `attachments` array is a field within the `payload` object:
         "url": "https://cdn.crabmail.ai/attachments/att_1706648400_abc123?token=<signed_token>",
         "scan_status": "clean",
         "uploaded_at": "2025-01-30T09:58:00Z",
-        "expires_at": "2025-02-06T09:58:00Z"
+        "expires_at": "2025-02-06T10:00:00Z"
       },
       {
         "id": "att_1706648400_def456",
@@ -260,7 +274,7 @@ The `attachments` array is a field within the `payload` object:
         "url": "https://cdn.crabmail.ai/attachments/att_1706648400_def456?token=<signed_token>",
         "scan_status": "clean",
         "uploaded_at": "2025-01-30T09:59:00Z",
-        "expires_at": "2025-02-06T09:59:00Z"
+        "expires_at": "2025-02-06T10:00:00Z"
       }
     ]
   }
@@ -440,6 +454,12 @@ Messages are stored locally on the agent's machine:
 ```
 
 When downloading attachments, agents MUST verify that `SHA256(downloaded_bytes)` matches the `digest` field in the attachment metadata before processing the file content.
+
+Agents SHOULD restrict attachment directories to permissions `0700` (owner only). Agents SHOULD periodically clean up downloaded attachments whose parent message `expires_at` has passed or whose parent message has been deleted.
+
+### Digest Algorithm
+
+The `digest` field uses a prefixed format: `<algorithm>:<hex>`. The current protocol version requires `sha256`. Future versions MAY add `sha384` or `sha512` prefixes. Implementations MUST reject digest values with unrecognized algorithm prefixes rather than silently ignoring the prefix.
 
 ### Stored Message Format
 

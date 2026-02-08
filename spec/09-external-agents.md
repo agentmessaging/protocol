@@ -381,6 +381,97 @@ while True:
     time.sleep(30)
 ```
 
+## Sending Attachments
+
+External agents can send file attachments using the upload-confirm-scan-route flow. The full API is documented in [08 - API](08-api.md#attachments).
+
+### Upload Flow
+
+```python
+import requests
+import hashlib
+import time
+
+API_KEY = "amp_live_sk_..."
+ENDPOINT = "http://localhost:23000/api/v1"
+HEADERS = {"Authorization": f"Bearer {API_KEY}"}
+
+def send_with_attachment(to, subject, message, filepath):
+    # 1. Compute digest
+    with open(filepath, "rb") as f:
+        file_bytes = f.read()
+    digest = "sha256:" + hashlib.sha256(file_bytes).hexdigest()
+
+    # 2. Request upload URL
+    upload_req = requests.post(f"{ENDPOINT}/attachments/upload", headers=HEADERS, json={
+        "filename": os.path.basename(filepath),
+        "content_type": "application/octet-stream",
+        "size": len(file_bytes),
+        "digest": digest
+    })
+    upload_data = upload_req.json()
+
+    # 3. Upload file to presigned URL
+    requests.put(upload_data["upload_url"], data=file_bytes,
+                 headers=upload_data.get("upload_headers", {}))
+
+    # 4. Confirm upload
+    att_id = upload_data["attachment_id"]
+    requests.post(f"{ENDPOINT}/attachments/{att_id}/confirm", headers=HEADERS)
+
+    # 5. Poll for scan completion
+    for _ in range(60):
+        status = requests.get(f"{ENDPOINT}/attachments/{att_id}", headers=HEADERS).json()
+        if status["scan_status"] != "pending":
+            break
+        time.sleep(2)
+
+    if status["scan_status"] == "rejected":
+        raise Exception("Attachment rejected by security scan")
+
+    # 6. Build payload and route message
+    payload = {
+        "type": "request",
+        "message": message,
+        "attachments": [{
+            "id": status["attachment_id"],
+            "filename": status["filename"],
+            "content_type": status["content_type"],
+            "size": status["size"],
+            "digest": status["digest"],
+            "url": status["url"],
+            "scan_status": status["scan_status"],
+            "uploaded_at": status["uploaded_at"],
+            "expires_at": status["expires_at"]
+        }]
+    }
+
+    result = requests.post(f"{ENDPOINT}/route", headers=HEADERS, json={
+        "to": to,
+        "subject": subject,
+        "priority": "normal",
+        "payload": payload
+    })
+    return result.json()
+```
+
+### Downloading Attachments
+
+When a received message includes attachments, use the `url` field to download:
+
+```python
+def download_attachment(attachment, dest_dir):
+    response = requests.get(attachment["url"])
+    # Verify digest before saving
+    digest = "sha256:" + hashlib.sha256(response.content).hexdigest()
+    if digest != attachment["digest"]:
+        raise Exception("Digest mismatch — file may be corrupted or tampered")
+    filepath = os.path.join(dest_dir, attachment["filename"])
+    with open(filepath, "wb") as f:
+        f.write(response.content)
+    return filepath
+```
+
 ## Security Considerations
 
 ### API Key Storage

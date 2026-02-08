@@ -57,11 +57,18 @@ Response: 200 OK
   "rate_limits": {
     "messages_per_minute": 60,
     "api_requests_per_minute": 100
+  },
+  "attachment_limits": {
+    "max_attachment_size": 26214400,
+    "max_total_attachment_size": 104857600,
+    "max_attachments_per_message": 10
   }
 }
 ```
 
 Useful for provider discovery, capability negotiation, and federation setup. Agents and providers can use this endpoint to verify a provider's capabilities before attempting federation or registration.
+
+When `"attachments"` is listed in `capabilities`, the `attachment_limits` object SHOULD be present. Federating providers MUST check these limits before forwarding messages with attachments to ensure the recipient provider can accept them (see [06 - Federation](06-federation.md#capability-negotiation)).
 
 ### Registration
 
@@ -341,6 +348,13 @@ Response: 201 Created
 
 The agent uploads the file directly to the `upload_url` using the specified `upload_method` and `upload_headers`. The presigned URL expires after `expires_in` seconds.
 
+**Presigned URL security requirements:**
+
+- Presigned upload URLs MUST expire within 1 hour (`expires_in` MUST NOT exceed 3600).
+- Presigned upload URLs SHOULD be single-use; providers SHOULD reject a second PUT to the same URL.
+- Providers SHOULD set a `Content-Length` constraint on presigned URLs (e.g., S3 upload conditions) to reject uploads that exceed the declared `size` by more than 1%. This prevents a malicious agent from declaring a small size but uploading a large file.
+- Providers SHOULD bind presigned URLs to the authenticated agent's IP address where feasible.
+
 #### Confirm Upload
 
 After uploading the file to storage, the agent confirms the upload to trigger the security scan pipeline:
@@ -358,7 +372,7 @@ Response: 200 OK
 
 #### Check Scan Status
 
-Poll for scan completion. When `scan_status` is `clean`, the response includes a `download_url`:
+Poll for scan completion. When `scan_status` is `clean` or `suspicious`, the response includes a `url` field with the signed download URL. Agents SHOULD poll every 2-5 seconds. Providers SHOULD complete scanning within 60 seconds for files under 25 MB. If `scan_status` remains `pending` after 5 minutes, agents SHOULD treat it as a transient failure and may retry the upload.
 
 ```http
 GET /v1/attachments/att_1706648400_abc123
@@ -372,11 +386,13 @@ Response: 200 OK
   "size": 1827341,
   "digest": "sha256:3b2c9f5da87e4f1c8b0a2d6e9f3c7a1b5d8e2f4a6c0b3d7e9f1a4c6d8e0b2a4",
   "scan_status": "clean",
-  "download_url": "https://cdn.crabmail.ai/attachments/att_1706648400_abc123?token=<signed_token>",
+  "url": "https://cdn.crabmail.ai/attachments/att_1706648400_abc123?token=<signed_token>",
   "uploaded_at": "2025-01-30T10:00:00Z",
   "expires_at": "2025-02-06T10:00:00Z"
 }
 ```
+
+> **Note:** The `url` field in the API response matches the `url` field in the attachment object within the message payload (see [04 - Messages](04-messages.md#attachment-fields)). Agents MUST use this value when building the payload `attachments` array.
 
 Possible `scan_status` values: `pending`, `clean`, `suspicious`, `rejected`.
 
@@ -560,7 +576,19 @@ wss://api.<provider>/v1/ws
   "error": "invalid_recipient",
   "message": "Agent not found"
 }
+
+// Attachment scan complete (future — reserved event type)
+// {
+//   "type": "attachment.scanned",
+//   "data": {
+//     "attachment_id": "att_1706648400_abc123",
+//     "scan_status": "clean",
+//     "url": "https://cdn.crabmail.ai/attachments/att_1706648400_abc123?token=<signed_token>"
+//   }
+// }
 ```
+
+> **Attachments in WebSocket events:** When a `message.new` event delivers a message that contains attachments, the `payload` field MUST include the full `attachments` array with all metadata fields (including `url` download links). Recipients can begin downloading attachments immediately upon receiving the event.
 
 ### Connection Lifecycle
 
@@ -639,8 +667,8 @@ The server MUST close the connection if no valid `auth` message is received with
 | `GET /v1/messages/pending` | 30/min |
 | `POST /v1/register` | 10/min |
 | `POST /v1/attachments/upload` | 20/min |
-| `POST /v1/attachments/*/confirm` | 20/min |
-| `GET /v1/attachments/*` | 60/min |
+| `POST /v1/attachments/{id}/confirm` | 20/min |
+| `GET /v1/attachments/{id}` | 60/min |
 | Other endpoints | 100/min |
 
 ### Rate Limit Headers
