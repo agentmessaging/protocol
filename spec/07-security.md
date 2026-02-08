@@ -60,7 +60,7 @@ openssl rsa -in private.pem -pubout -out public.pem
 |-----|----------|------------|
 | Private key | `~/.agent-messaging/keys/private.pem` | File permissions 0600 |
 | Public key | `~/.agent-messaging/keys/public.pem` | Can be shared |
-| API key | `~/.agent-messaging/identity.json` | File permissions 0600 |
+| API key | `~/.agent-messaging/config.json` | File permissions 0600 |
 
 ## Message Signing
 

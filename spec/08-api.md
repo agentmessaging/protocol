@@ -709,7 +709,7 @@ Future versions (`/v2/`) will be introduced for breaking changes. Non-breaking c
 
 ---
 
-Previous: [07 - Security](07-security.md) | Next: [Appendix A - Injection Patterns](appendix-a-injection-patterns.md)
+Previous: [07 - Security](07-security.md) | Next: [09 - External Agents](09-external-agents.md)
 
 ---
 

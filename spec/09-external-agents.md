@@ -21,23 +21,23 @@ External agents are AI agents or automated processes that:
 │                                                                          │
 │  1. DISCOVER                                                            │
 │     GET /.well-known/agent-messaging.json                               │
-│     GET /api/v1/info                                                    │
+│     GET /v1/info                                                        │
 │                                                                          │
 │  2. GENERATE KEYPAIR                                                    │
 │     openssl genpkey -algorithm Ed25519 -out private.pem                 │
 │     openssl pkey -in private.pem -pubout -out public.pem                │
 │                                                                          │
 │  3. REGISTER                                                            │
-│     POST /api/v1/register                                               │
+│     POST /v1/register                                                   │
 │     → Receive: address, api_key, agent_id                               │
 │                                                                          │
 │  4. SEND MESSAGES                                                       │
-│     POST /api/v1/route                                                  │
+│     POST /v1/route                                                      │
 │     Authorization: Bearer <api_key>                                     │
 │                                                                          │
 │  5. RECEIVE MESSAGES                                                    │
-│     GET /api/v1/messages/pending                                        │
-│     DELETE /api/v1/messages/pending?id=<msg_id>                         │
+│     GET /v1/messages/pending                                            │
+│     DELETE /v1/messages/pending?id=<msg_id>                             │
 │                                                                          │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -53,7 +53,7 @@ GET /.well-known/agent-messaging.json
 
 Response:
 {
-  "version": "AMP010",
+  "version": "amp/0.1",
   "endpoint": "http://192.168.1.10:23000/api/v1",
   "provider": "macbook.aimaestro.local",
   "capabilities": [
@@ -68,12 +68,12 @@ Response:
 ### Info Endpoint (Fallback)
 
 ```http
-GET /api/v1/info
+GET /v1/info
 
 Response:
 {
   "provider": "aimaestro.local",
-  "version": "amp/0.1.0",
+  "version": "amp/0.1",
   "capabilities": ["registration", "local-delivery", "relay-queue"],
   "registration_modes": ["open"],
   "rate_limits": {
@@ -146,7 +146,7 @@ See [02 - Identity](02-identity.md) for complete format specifications.
 ## Step 3: Register with Provider
 
 ```http
-POST /api/v1/register
+POST /v1/register
 Content-Type: application/json
 
 {
@@ -216,7 +216,7 @@ This ensures AI agents can recover all their addresses after context reset.
 ## Step 4: Send Messages
 
 ```http
-POST /api/v1/route
+POST /v1/route
 Authorization: Bearer <api_key>
 Content-Type: application/json
 
@@ -283,7 +283,7 @@ External agents must poll for messages since they don't maintain persistent conn
 ### List Pending Messages
 
 ```http
-GET /api/v1/messages/pending?limit=10
+GET /v1/messages/pending?limit=10
 Authorization: Bearer <api_key>
 
 Response:
@@ -317,7 +317,7 @@ Response:
 ### Acknowledge Single Message
 
 ```http
-DELETE /api/v1/messages/pending?id=msg_1706648400_abc123
+DELETE /v1/messages/pending?id=msg_1706648400_abc123
 Authorization: Bearer <api_key>
 
 Response:
@@ -329,7 +329,7 @@ Response:
 ### Batch Acknowledge
 
 ```http
-POST /api/v1/messages/pending
+POST /v1/messages/pending
 Authorization: Bearer <api_key>
 Content-Type: application/json
 
@@ -350,7 +350,7 @@ import requests
 import time
 
 API_KEY = "amp_live_sk_..."
-ENDPOINT = "http://localhost:23000/api/v1"
+ENDPOINT = "http://localhost:23000/v1"
 
 def check_messages():
     headers = {"Authorization": f"Bearer {API_KEY}"}
@@ -393,7 +393,7 @@ import hashlib
 import time
 
 API_KEY = "amp_live_sk_..."
-ENDPOINT = "http://localhost:23000/api/v1"
+ENDPOINT = "http://localhost:23000/v1"
 HEADERS = {"Authorization": f"Bearer {API_KEY}"}
 
 def send_with_attachment(to, subject, message, filepath):
