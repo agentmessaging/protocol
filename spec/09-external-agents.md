@@ -60,7 +60,8 @@ Response:
     "registration",
     "local-delivery",
     "relay-queue",
-    "mesh-routing"
+    "mesh-routing",
+    "attachments"
   ]
 }
 ```
@@ -74,7 +75,7 @@ Response:
 {
   "provider": "aimaestro.local",
   "version": "amp/0.1",
-  "capabilities": ["registration", "local-delivery", "relay-queue"],
+  "capabilities": ["registration", "local-delivery", "relay-queue", "attachments"],
   "registration_modes": ["open"],
   "rate_limits": {
     "messages_per_minute": 60,

@@ -212,7 +212,7 @@ The `attachments` array is a field within the `payload` object:
 | `size` | integer | Yes | File size in bytes |
 | `digest` | string | Yes | Content hash in the format `<algorithm>:<hex>` (currently `sha256:<hex>`; see [Digest Algorithm](#digest-algorithm)) |
 | `url` | string | Yes | Provider-signed download URL |
-| `scan_status` | enum | Yes | Security scan result: `clean`, `suspicious`, or `rejected` |
+| `scan_status` | enum | Yes | Security scan result: `pending` (upload in progress), `clean`, `suspicious`, or `rejected` |
 | `uploaded_at` | string | Yes | ISO 8601 timestamp of when the file was uploaded |
 | `expires_at` | string | Yes | ISO 8601 expiration timestamp (set by the agent, typically 7 days from upload; providers MUST NOT modify this field after routing — see [Attachment Signing Flow](#attachment-signing-flow)) |
 
