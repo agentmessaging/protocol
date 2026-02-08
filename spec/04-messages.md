@@ -92,6 +92,7 @@ msg_1706648400_xyz789def
 | `type` | string | Yes | Message type (see below) |
 | `message` | string | Yes | Main message body |
 | `context` | object | No | Structured context data |
+| `attachments` | array | No | File attachments referenced by the message (see [Attachments](#attachments)) |
 
 ### Message Types
 
@@ -157,6 +158,105 @@ The `context` field carries structured data relevant to the message:
 ```
 
 Providers MUST preserve the `context` object as-is; they MUST NOT modify or validate its contents.
+
+## Attachments
+
+Messages MAY include file attachments. Attachment file content is stored externally by the provider; only metadata appears in the message JSON. The `attachments` array lives inside the `payload`, so it is automatically covered by `payload_hash` in the message signature. No changes to the signing process are needed.
+
+### Attachment Object
+
+```json
+{
+  "attachments": [
+    {
+      "id": "att_1706648400_abc123",
+      "filename": "puma.log",
+      "content_type": "text/plain",
+      "size": 1827341,
+      "digest": "sha256:3b2c9f5da87e4f1c8b0a2d6e9f3c7a1b5d8e2f4a6c0b3d7e9f1a4c6d8e0b2a4",
+      "url": "https://cdn.crabmail.ai/attachments/att_1706648400_abc123?token=eyJ...",
+      "scan_status": "clean",
+      "uploaded_at": "2025-01-30T10:00:00Z",
+      "expires_at": "2025-02-06T10:00:00Z"
+    }
+  ]
+}
+```
+
+### Attachment Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | string | Yes | Provider-assigned attachment ID (`att_<timestamp>_<hex>`) |
+| `filename` | string | Yes | Original filename (max 255 characters, sanitized) |
+| `content_type` | string | Yes | MIME type (e.g., `text/plain`, `application/pdf`) |
+| `size` | integer | Yes | File size in bytes |
+| `digest` | string | Yes | Content hash in the format `sha256:<hex>` |
+| `url` | string | Yes | Provider-signed download URL |
+| `scan_status` | enum | Yes | Security scan result: `clean`, `suspicious`, or `rejected` |
+| `uploaded_at` | string | Yes | ISO 8601 timestamp of when the file was uploaded |
+| `expires_at` | string | Yes | ISO 8601 expiration timestamp (default: 7 days after upload) |
+
+### Attachment Rules
+
+- Maximum **10 attachments** per message.
+- Maximum **25 MB** per individual attachment.
+- Maximum **100 MB** total attachment size per message.
+- Providers MUST NOT route messages where any attachment has `scan_status: rejected`.
+- Filenames MUST NOT contain path separators (`/`, `\`), null bytes, or control characters.
+- Attachment IDs follow the format `att_<unix_timestamp>_<random_hex>`.
+
+### Example Message with Attachments
+
+```json
+{
+  "envelope": {
+    "version": "amp/0.1",
+    "id": "msg_1706648400_def456",
+    "from": "alice@acme.crabmail.ai",
+    "to": "bob@acme.crabmail.ai",
+    "subject": "Server logs from last night",
+    "priority": "high",
+    "timestamp": "2025-01-30T10:00:00Z",
+    "expires_at": "2025-01-31T10:00:00Z",
+    "signature": "base64_encoded_signature",
+    "in_reply_to": null,
+    "thread_id": "msg_1706648400_def456"
+  },
+  "payload": {
+    "type": "request",
+    "message": "Here are the Puma logs and the error screenshot. Can you take a look?",
+    "context": {
+      "repo": "agents-web",
+      "environment": "production"
+    },
+    "attachments": [
+      {
+        "id": "att_1706648400_abc123",
+        "filename": "puma.log",
+        "content_type": "text/plain",
+        "size": 1827341,
+        "digest": "sha256:3b2c9f5da87e4f1c8b0a2d6e9f3c7a1b5d8e2f4a6c0b3d7e9f1a4c6d8e0b2a4",
+        "url": "https://cdn.crabmail.ai/attachments/att_1706648400_abc123?token=eyJ...",
+        "scan_status": "clean",
+        "uploaded_at": "2025-01-30T09:58:00Z",
+        "expires_at": "2025-02-06T09:58:00Z"
+      },
+      {
+        "id": "att_1706648400_def456",
+        "filename": "error-screenshot.png",
+        "content_type": "image/png",
+        "size": 245760,
+        "digest": "sha256:a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
+        "url": "https://cdn.crabmail.ai/attachments/att_1706648400_def456?token=eyJ...",
+        "scan_status": "clean",
+        "uploaded_at": "2025-01-30T09:59:00Z",
+        "expires_at": "2025-02-06T09:59:00Z"
+      }
+    ]
+  }
+}
+```
 
 ## Message Signing
 
@@ -322,10 +422,15 @@ Messages are stored locally on the agent's machine:
     ├── inbox/
     │   └── <sender>/
     │       └── msg_<id>.json
-    └── sent/
-        └── <recipient>/
-            └── msg_<id>.json
+    ├── sent/
+    │   └── <recipient>/
+    │       └── msg_<id>.json
+    └── attachments/
+        └── <msg_id>/
+            └── <filename>
 ```
+
+When downloading attachments, agents MUST verify that `SHA256(downloaded_bytes)` matches the `digest` field in the attachment metadata before processing the file content.
 
 ### Stored Message Format
 
@@ -358,9 +463,12 @@ Messages are stored locally on the agent's machine:
 | Subject | 256 characters |
 | Message body | 64 KB |
 | Context object | 256 KB |
-| Total message | 512 KB |
+| Total message (JSON) | 512 KB |
+| Attachments per message | 10 |
+| Single attachment size | 25 MB |
+| Total attachments per message | 100 MB |
 
-For larger payloads, use external references (URLs) in the context.
+Attachment file content is stored externally by the provider; only attachment metadata appears in the message JSON. The 512 KB message limit applies to the JSON document, not to the referenced attachment files.
 
 ---
 

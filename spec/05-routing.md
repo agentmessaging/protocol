@@ -256,7 +256,9 @@ When WebSocket and webhook both fail, messages go to the relay queue.
 | Max messages | 1000 per agent |
 | Storage | Temporary (not persistent backup) |
 
-> **Note:** Relay queues MAY be keyed by agent name (local part) or full address. Providers SHOULD normalize to agent name for consistent lookup, especially when the agent has not yet registered a full address.
+> **Note:** Relay queues MAY be keyed by agent name (local part) or full address.
+
+> **Attachments:** Attachment download URLs MUST remain valid for at least the relay queue TTL (7 days). When a relay message expires, the provider MAY delete the associated attachment files. Providers SHOULD normalize to agent name for consistent lookup, especially when the agent has not yet registered a full address.
 
 ### Pickup Endpoint
 
@@ -369,6 +371,17 @@ async def deliver_local(message, recipient):
     await queue_for_relay(message, recipient)
     return {"status": "queued", "method": "relay"}
 ```
+
+### Messages with Attachments
+
+When routing a message that contains attachments, the provider MUST perform the following checks before delivery:
+
+1. Verify that all attachments have a `scan_status` of `clean` or `suspicious` (not `pending` or `rejected`).
+2. Verify that all attachment IDs belong to the authenticated sender.
+3. If any attachment has `scan_status: pending`, return `409 Conflict` with error code `attachment_pending`.
+4. If any attachment has `scan_status: rejected`, return `422 Unprocessable Entity` with error code `attachment_rejected`.
+
+Providers MUST NOT deliver messages with rejected attachments. Messages with `suspicious` attachments MAY be delivered, but the provider MUST ensure the security metadata reflects the scan results so the recipient can make a trust decision.
 
 ## Delivery Receipts
 

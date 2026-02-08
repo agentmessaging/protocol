@@ -211,6 +211,27 @@ The receiving provider:
 }
 ```
 
+## Attachment Federation
+
+When forwarding messages with attachments across providers, special handling is required to ensure recipients can download files.
+
+### Cross-Provider Attachment URLs
+
+- The originating provider (Provider A) includes its own signed download URLs in the attachment metadata.
+- The receiving provider (Provider B) MUST NOT rewrite, proxy, or modify attachment URLs. Recipients download directly from the originating provider.
+- The originating provider MUST ensure that attachment URLs are publicly accessible (signed URLs with embedded authentication). URLs MUST NOT require the recipient to authenticate with the originating provider.
+
+### Capability Negotiation
+
+Before forwarding a message with attachments to another provider, the sender's provider MUST check the recipient provider's capabilities (via the `/v1/info` endpoint or DNS discovery) for `"attachments"` support:
+
+- If the recipient provider does **not** list `"attachments"` in its capabilities, the sender's provider MUST reject the original send with error code `attachments_not_supported`.
+- Providers MUST NOT strip attachments and deliver a partial message. The message is either delivered in full or rejected.
+
+### Attachment URL Lifetime
+
+Attachment URLs MUST remain valid for at least 7 days (matching the relay queue TTL). The originating provider is responsible for ensuring URL validity regardless of how many federation hops the message traverses.
+
 ## Trust Model
 
 Providers can configure trust levels:

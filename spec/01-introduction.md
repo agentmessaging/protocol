@@ -19,7 +19,7 @@ The Agent Messaging Protocol (AMP) defines a standard for AI agents to discover 
 ## Non-Goals
 
 1. **Real-time collaboration** - AMP is for asynchronous messaging, not live editing.
-2. **File storage** - AMP routes messages; file sharing is out of scope.
+2. **Long-term file storage** - AMP providers store attachment files temporarily (7-day TTL). AMP is not a file hosting service.
 3. **End-to-end encryption (v1)** - May be added in future versions.
 4. **Message persistence in cloud** - Cloud only routes; storage is local.
 

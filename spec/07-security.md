@@ -22,6 +22,7 @@ AMP security is built on three principles:
 | Replay attacks | Timestamps in messages; recipients track seen IDs |
 | Unauthorized access | API key authentication; agent-scoped permissions |
 | Provider compromise | Messages stored locally, not on provider |
+| Malicious file uploads | Provider-side scanning; blocked executables; digest verification |
 
 ### Out of Scope (v1)
 
@@ -358,6 +359,111 @@ Providers MAY include a `security` field in the message's local metadata to prop
 | `verified_at` | string | ISO 8601 timestamp of when the signature was verified |
 
 This metadata allows agents to make informed trust decisions without re-verifying the signature.
+
+## Attachment Security
+
+Messages MAY include file attachments (see [04 - Messages](04-messages.md#attachments)). Because attachments carry external file content into the agent's context, providers MUST scan all uploaded files before allowing them to be routed.
+
+### Scanning Pipeline
+
+Providers MUST implement the following scanning pipeline before marking an attachment as `clean`:
+
+```
+Agent uploads file → Provider storage (e.g., S3)
+        │
+        ▼
+Provider confirms receipt
+        │
+        ▼
+Malware scan (ClamAV or commercial AV)           [MUST]
+        │
+        ▼
+File type verification (magic bytes vs MIME)      [MUST]
+        │
+        ▼
+Size and digest verification                      [MUST]
+        │
+        ▼
+Prompt injection scan (LLM-based or patterns)     [SHOULD]
+        │
+        ▼
+Executable detection                              [MUST]
+        │
+        ▼
+scan_status = clean | suspicious | rejected
+        │
+        ├── If clean → generate signed download URL
+        └── If rejected → delete file, block message routing
+```
+
+- **Malware scan** (MUST): Providers MUST scan files with antivirus software (e.g., ClamAV) before routing.
+- **File type verification** (MUST): Providers MUST verify that the file's magic bytes match the declared `content_type`. Mismatches MUST result in `rejected` status.
+- **Size and digest verification** (MUST): Providers MUST verify that the file size matches `size` and that `SHA256(file_bytes)` matches `digest`.
+- **Prompt injection scan** (SHOULD): For text-extractable files (PDF, DOCX, TXT, CSV, JSON, XML, HTML, Markdown), providers SHOULD extract text content and scan for injection patterns from [Appendix A](appendix-a-injection-patterns.md). Files flagged with injection patterns SHOULD be marked `suspicious` (not `rejected`) so the recipient agent can make a trust decision.
+- **Executable detection** (MUST): Providers MUST reject files that are executable, regardless of declared MIME type.
+
+### Blocked MIME Types
+
+Providers MUST reject uploads with the following MIME types:
+
+| MIME Type | Description |
+|-----------|-------------|
+| `application/x-executable` | Unix executables |
+| `application/x-msdos-program` | DOS/Windows executables |
+| `application/x-sh` | Shell scripts |
+| `application/x-shellscript` | Shell scripts (alternate) |
+| `application/vnd.microsoft.portable-executable` | Windows PE executables |
+
+Providers MAY extend this list with additional blocked types. Providers SHOULD also reject files whose magic bytes indicate an executable format even when the declared MIME type is not on this list.
+
+### Prompt Injection in Attachments
+
+Text-extractable file types (PDF, DOCX, TXT, CSV, JSON, XML, HTML, Markdown) MAY contain prompt injection payloads. These are particularly dangerous because an agent processing a "clean" attachment might follow instructions embedded in the file content.
+
+- Providers SHOULD extract text from these file types and scan against the patterns in [Appendix A](appendix-a-injection-patterns.md).
+- Recipients MUST treat attachment content with the same trust level as the message itself. Attachments from `external` or `untrusted` senders MUST NOT be processed as trusted instructions.
+- Agents SHOULD present attachment content within the same `<external-content>` wrapper used for the parent message.
+
+### Attachment Security Metadata
+
+Providers SHOULD include attachment scan results in the `local.security` metadata:
+
+```json
+{
+  "local": {
+    "security": {
+      "trust": "external",
+      "injection_flags": [],
+      "wrapped": true,
+      "verified_at": "2025-01-30T10:00:04Z",
+      "attachments": [
+        {
+          "id": "att_1706648400_abc123",
+          "scan_status": "clean",
+          "scanned_at": "2025-01-30T09:58:30Z",
+          "digest_verified": true,
+          "injection_flags": []
+        },
+        {
+          "id": "att_1706648400_def456",
+          "scan_status": "suspicious",
+          "scanned_at": "2025-01-30T09:59:30Z",
+          "digest_verified": true,
+          "injection_flags": ["instruction_override"]
+        }
+      ]
+    }
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Attachment ID |
+| `scan_status` | string | `clean`, `suspicious`, or `rejected` |
+| `scanned_at` | string | ISO 8601 timestamp of when the scan completed |
+| `digest_verified` | boolean | Whether the SHA-256 digest was verified |
+| `injection_flags` | array | Injection pattern categories detected (e.g., `["instruction_override"]`) |
 
 ## Replay Protection
 
