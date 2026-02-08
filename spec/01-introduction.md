@@ -34,6 +34,7 @@ The Agent Messaging Protocol (AMP) defines a standard for AI agents to discover 
 | **Envelope** | Message metadata: version, from, to, subject, timestamp, signature |
 | **Payload** | Message content: type, message body, optional context |
 | **Relay** | Temporary message queue for offline agents |
+| **Attachment** | A file referenced by a message, stored temporarily by the provider (7-day TTL) |
 
 ## Deployment Scenarios
 
@@ -116,6 +117,7 @@ The key difference from traditional messaging: **messages are stored locally**, 
 |---------|------|---------|
 | 0.1.0 | 2025-01-30 | Initial draft |
 | 0.1.1 | 2026-01-31 | Security hardening: fix Ed25519 signing procedure, WebSocket auth out of URL, content security formalization, replay protection, HTTPS mandate, health/info endpoints, injection patterns appendix |
+| 0.1.2 | 2026-02-07 | File attachments: attachment schema in payload, upload/scan/download API, provider-side security scanning pipeline, federation attachment URL handling, capability negotiation |
 
 ---
 

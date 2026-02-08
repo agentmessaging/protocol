@@ -410,9 +410,13 @@ Providers MUST reject uploads with the following MIME types:
 |-----------|-------------|
 | `application/x-executable` | Unix executables |
 | `application/x-msdos-program` | DOS/Windows executables |
+| `application/x-msdownload` | Windows DLLs and executables |
+| `application/x-dosexec` | DOS/Windows PE variant |
+| `application/vnd.microsoft.portable-executable` | Windows PE executables |
 | `application/x-sh` | Shell scripts |
 | `application/x-shellscript` | Shell scripts (alternate) |
-| `application/vnd.microsoft.portable-executable` | Windows PE executables |
+| `application/x-python-code` | Compiled Python bytecode |
+| `application/java-archive` | Java JAR files (executable) |
 
 Providers MAY extend this list with additional blocked types. Providers SHOULD also reject files whose magic bytes indicate an executable format even when the declared MIME type is not on this list.
 
@@ -423,6 +427,15 @@ Text-extractable file types (PDF, DOCX, TXT, CSV, JSON, XML, HTML, Markdown) MAY
 - Providers SHOULD extract text from these file types and scan against the patterns in [Appendix A](appendix-a-injection-patterns.md).
 - Recipients MUST treat attachment content with the same trust level as the message itself. Attachments from `external` or `untrusted` senders MUST NOT be processed as trusted instructions.
 - Agents SHOULD present attachment content within the same `<external-content>` wrapper used for the parent message.
+
+#### Handling `suspicious` Attachments
+
+When an agent receives a message with one or more `suspicious` attachments, it SHOULD:
+
+1. **Log the flags** — Record the `injection_flags` from security metadata for audit.
+2. **Display a warning** — Present a clear warning to the consuming agent or user that the attachment was flagged.
+3. **Do not auto-process** — Agents MUST NOT automatically extract, execute, or follow instructions from suspicious attachments. Content SHOULD be presented as read-only data.
+4. **Wrap content** — If the agent processes the attachment text, wrap it in `<external-content trust="suspicious">` tags with the injection flags noted.
 
 ### Attachment Security Metadata
 
@@ -464,6 +477,10 @@ Providers SHOULD include attachment scan results in the `local.security` metadat
 | `scanned_at` | string | ISO 8601 timestamp of when the scan completed |
 | `digest_verified` | boolean | Whether the SHA-256 digest was verified |
 | `injection_flags` | array | Injection pattern categories detected (e.g., `["instruction_override"]`) |
+
+### Attachments and End-to-End Encryption (Future)
+
+> **Design Note:** When end-to-end encryption (E2E) is introduced in v2, the `payload` will be encrypted and opaque to providers. Since `attachments` lives inside the payload, providers will not be able to read attachment metadata or verify `scan_status` before routing. A future version of the protocol will need to address this — likely by moving attachment metadata to the envelope or by introducing a separate encrypted-attachment negotiation flow. Implementers should be aware of this forward-compatibility consideration.
 
 ## Replay Protection
 

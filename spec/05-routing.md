@@ -256,9 +256,9 @@ When WebSocket and webhook both fail, messages go to the relay queue.
 | Max messages | 1000 per agent |
 | Storage | Temporary (not persistent backup) |
 
-> **Note:** Relay queues MAY be keyed by agent name (local part) or full address.
+> **Note:** Relay queues MAY be keyed by agent name (local part) or full address. Providers SHOULD normalize to agent name for consistent lookup, especially when the agent has not yet registered a full address.
 
-> **Attachments:** Attachment download URLs MUST remain valid for at least the relay queue TTL (7 days). When a relay message expires, the provider MAY delete the associated attachment files. Providers SHOULD normalize to agent name for consistent lookup, especially when the agent has not yet registered a full address.
+> **Attachments:** Attachment download URLs MUST remain valid for at least the relay queue TTL (7 days). When a relay message expires, the provider MAY delete the associated attachment files.
 
 ### Pickup Endpoint
 

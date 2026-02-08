@@ -165,21 +165,27 @@ Messages MAY include file attachments. Attachment file content is stored externa
 
 ### Attachment Object
 
+The `attachments` array is a field within the `payload` object:
+
 ```json
 {
-  "attachments": [
-    {
-      "id": "att_1706648400_abc123",
-      "filename": "puma.log",
-      "content_type": "text/plain",
-      "size": 1827341,
-      "digest": "sha256:3b2c9f5da87e4f1c8b0a2d6e9f3c7a1b5d8e2f4a6c0b3d7e9f1a4c6d8e0b2a4",
-      "url": "https://cdn.crabmail.ai/attachments/att_1706648400_abc123?token=eyJ...",
-      "scan_status": "clean",
-      "uploaded_at": "2025-01-30T10:00:00Z",
-      "expires_at": "2025-02-06T10:00:00Z"
-    }
-  ]
+  "payload": {
+    "type": "request",
+    "message": "Here are the logs.",
+    "attachments": [
+      {
+        "id": "att_1706648400_abc123",
+        "filename": "puma.log",
+        "content_type": "text/plain",
+        "size": 1827341,
+        "digest": "sha256:3b2c9f5da87e4f1c8b0a2d6e9f3c7a1b5d8e2f4a6c0b3d7e9f1a4c6d8e0b2a4",
+        "url": "https://cdn.crabmail.ai/attachments/att_1706648400_abc123?token=<signed_token>",
+        "scan_status": "clean",
+        "uploaded_at": "2025-01-30T10:00:00Z",
+        "expires_at": "2025-02-06T10:00:00Z"
+      }
+    ]
+  }
 }
 ```
 
@@ -203,8 +209,11 @@ Messages MAY include file attachments. Attachment file content is stored externa
 - Maximum **25 MB** per individual attachment.
 - Maximum **100 MB** total attachment size per message.
 - Providers MUST NOT route messages where any attachment has `scan_status: rejected`.
+- In routed message payloads, `scan_status` MUST be `clean` or `suspicious` — never `pending` or `rejected`. The `pending` status is valid only in upload API responses before routing.
 - Filenames MUST NOT contain path separators (`/`, `\`), null bytes, or control characters.
-- Attachment IDs follow the format `att_<unix_timestamp>_<random_hex>`.
+- Attachment IDs follow the format `att_<unix_timestamp>_<random_hex>`. Agents and providers MUST validate attachment IDs against path traversal (reject IDs containing `/`, `\`, `..`, or null bytes) before using them in filesystem paths.
+- Each attachment ID MAY be referenced by only one message. Providers MUST reject a `/route` request that references an attachment ID already associated with a previously routed message.
+- The 7-day attachment TTL starts when the message is **routed**, not when the file is uploaded. Providers MUST reset the expiration clock on the attachment when the message is accepted for delivery.
 
 ### Example Message with Attachments
 
@@ -237,7 +246,7 @@ Messages MAY include file attachments. Attachment file content is stored externa
         "content_type": "text/plain",
         "size": 1827341,
         "digest": "sha256:3b2c9f5da87e4f1c8b0a2d6e9f3c7a1b5d8e2f4a6c0b3d7e9f1a4c6d8e0b2a4",
-        "url": "https://cdn.crabmail.ai/attachments/att_1706648400_abc123?token=eyJ...",
+        "url": "https://cdn.crabmail.ai/attachments/att_1706648400_abc123?token=<signed_token>",
         "scan_status": "clean",
         "uploaded_at": "2025-01-30T09:58:00Z",
         "expires_at": "2025-02-06T09:58:00Z"
@@ -248,7 +257,7 @@ Messages MAY include file attachments. Attachment file content is stored externa
         "content_type": "image/png",
         "size": 245760,
         "digest": "sha256:a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2",
-        "url": "https://cdn.crabmail.ai/attachments/att_1706648400_def456?token=eyJ...",
+        "url": "https://cdn.crabmail.ai/attachments/att_1706648400_def456?token=<signed_token>",
         "scan_status": "clean",
         "uploaded_at": "2025-01-30T09:59:00Z",
         "expires_at": "2025-02-06T09:59:00Z"
@@ -427,7 +436,7 @@ Messages are stored locally on the agent's machine:
     │       └── msg_<id>.json
     └── attachments/
         └── <msg_id>/
-            └── <filename>
+            └── <att_id>_<filename>
 ```
 
 When downloading attachments, agents MUST verify that `SHA256(downloaded_bytes)` matches the `digest` field in the attachment metadata before processing the file content.
