@@ -689,10 +689,12 @@ When messages with attachments are delivered via the local filesystem (rather th
     sent/
       <recipient>/
         msg_<id>.json
-    attachments/
-      <att_id>/
-        <filename>
+  attachments/
+    <att_id>/
+      <filename>
 ```
+
+> **Note:** The `attachments/` directory is at the top level of the agent's storage directory, not nested under `messages/`. This is because attachments may be referenced by messages in both inbox and sent folders.
 
 ### Download and Verification
 
@@ -778,6 +780,39 @@ X-RateLimit-Reset: 1706648460
 ## 13. End-to-End Encryption (Future Consideration)
 
 When end-to-end encryption (E2E) is introduced in v2, the `payload` will be encrypted and opaque to providers. Since `attachments` lives inside the payload, providers will not be able to read attachment metadata or verify `scan_status` before routing. A future version of the protocol will need to address this -- likely by moving attachment metadata to the envelope or by introducing a separate encrypted-attachment negotiation flow.
+
+---
+
+## 14. CLI Quick Start (Bash)
+
+The Claude Code plugin provides CLI tools for attachment workflows. Here's a complete local send/receive example:
+
+```bash
+# 1. Initialize agent identity (if not already done)
+amp-init.sh --auto
+
+# 2. Send a message with attachments
+amp-send.sh bob "Server logs" "Here are the logs from last night" \
+  --attach /tmp/puma.log \
+  --attach /tmp/error-screenshot.png
+
+# 3. Check inbox for messages with attachments
+amp-inbox.sh
+
+# 4. Read a message (shows attachment metadata)
+amp-read.sh msg_1706648400_abc123
+
+# 5. Download all attachments from a message
+amp-download.sh msg_1706648400_abc123 --all --dest /tmp/downloads
+
+# 6. Download a specific attachment
+amp-download.sh msg_1706648400_abc123 att_1706648400_def456
+
+# Attachment files are verified against their SHA-256 digest after download.
+# Local deliveries use scan_status "basic_clean" (MIME checks passed) or
+# "unscanned" (no checks performed). Provider-routed messages will have
+# "clean", "suspicious", or "rejected" scan status.
+```
 
 ---
 

@@ -214,7 +214,7 @@ The `attachments` array is a field within the `payload` object:
 | `size` | integer | Yes | File size in bytes |
 | `digest` | string | Yes | Content hash in the format `<algorithm>:<hex>` (currently `sha256:<hex>`; see [Digest Algorithm](#digest-algorithm)) |
 | `url` | string | Yes | Provider-signed download URL |
-| `scan_status` | enum | Yes | Security scan result: `pending` (upload in progress), `clean`, `suspicious`, or `rejected` |
+| `scan_status` | enum | Yes | Security scan result: `pending` (upload in progress), `clean`, `basic_clean` (required checks passed but no AV scan), `unscanned` (local delivery, no provider scan), `suspicious`, or `rejected` |
 | `uploaded_at` | string | Yes | ISO 8601 timestamp of when the file was uploaded |
 | `expires_at` | string | Yes | ISO 8601 expiration timestamp (set by the agent, MUST be at least 7 days from upload time to ensure relay queue compatibility; providers MUST NOT modify this field after routing — see [Attachment Signing Flow](#attachment-signing-flow)) |
 
@@ -224,7 +224,7 @@ The `attachments` array is a field within the `payload` object:
 - Maximum **25 MB** per individual attachment.
 - Maximum **100 MB** total attachment size per message.
 - Providers MUST NOT route messages where any attachment has `scan_status: rejected`.
-- In routed message payloads, `scan_status` MUST be `clean` or `suspicious` — never `pending` or `rejected`. The `pending` status is valid only in upload API responses before routing.
+- In routed message payloads, `scan_status` MUST be `clean`, `basic_clean`, or `suspicious` — never `pending`, `unscanned`, or `rejected`. The `pending` status is valid only in upload API responses before routing. The `unscanned` status is valid only for local filesystem delivery where no provider scanning infrastructure is available. The `basic_clean` status indicates that required checks (size, digest, MIME, magic bytes) passed but no antivirus scan was performed.
 - Filenames MUST NOT contain path separators (`/`, `\`), null bytes, or control characters. Providers MUST sanitize filenames by stripping or replacing characters not in the set `[a-zA-Z0-9._-]`. Filenames MUST NOT match reserved OS names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`-`COM9`, `LPT1`-`LPT9` on Windows). Leading and trailing dots and spaces MUST be stripped. Double-encoded path separators (e.g., `%2F`) MUST be rejected.
 - Attachment IDs follow the format `att_<unix_timestamp>_<random_hex>`. Agents and providers MUST validate attachment IDs against path traversal (reject IDs containing `/`, `\`, `..`, or null bytes) before using them in filesystem paths.
 - Each attachment ID MUST be referenced by at most one message. Providers MUST reject a `/route` request that references an attachment ID already associated with a previously routed message. Retrying the same `/route` request (same message, same attachments) after a transient failure does not count as reuse.
@@ -454,17 +454,19 @@ Messages are stored locally on the agent's machine:
 
 ```
 ~/.agent-messaging/
-└── messages/
-    ├── inbox/
-    │   └── <sender>/
-    │       └── msg_<id>.json
-    ├── sent/
-    │   └── <recipient>/
-    │       └── msg_<id>.json
-    └── attachments/
-        └── <att_id>/
-            └── <filename>
+├── messages/
+│   ├── inbox/
+│   │   └── <sender>/
+│   │       └── msg_<id>.json
+│   └── sent/
+│       └── <recipient>/
+│           └── msg_<id>.json
+└── attachments/
+    └── <att_id>/
+        └── <filename>
 ```
+
+> **Note:** The `attachments/` directory is at the top level of the agent storage directory, not nested under `messages/`. This allows attachments to be referenced by messages in both inbox and sent folders.
 
 When downloading attachments, agents MUST verify that `SHA256(downloaded_bytes)` matches the `digest` field in the attachment metadata before processing the file content.
 

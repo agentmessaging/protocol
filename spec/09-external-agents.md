@@ -587,13 +587,13 @@ amp-register.sh --name my-agent --provider http://localhost:23000
 amp-send.sh recipient@host.aimaestro.local "Subject" "Message body"
 
 # Check inbox
-amp-inbox.sh list
+amp-inbox.sh
 
 # Read specific message
-amp-inbox.sh read msg_1706648400_abc123
+amp-read.sh msg_1706648400_abc123
 
-# Acknowledge message
-amp-inbox.sh ack msg_1706648400_abc123
+# Delete a message
+amp-delete.sh msg_1706648400_abc123
 ```
 
 ---

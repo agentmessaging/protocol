@@ -108,6 +108,8 @@ Response:
 }
 ```
 
+> **Security Note:** The well-known endpoint relies on TLS for authenticity. Unlike DNS TXT records (Method 1), which include the provider's public key fingerprint directly, the well-known endpoint's authenticity depends solely on the TLS certificate of the hosting domain. Providers SHOULD also publish DNS TXT records as a secondary verification mechanism. Clients SHOULD cross-check the well-known endpoint's `fingerprint` against the DNS TXT record when both are available.
+
 ### Method 3: Central Registry (Bootstrap)
 
 For new providers not yet in DNS, a central registry provides discovery:

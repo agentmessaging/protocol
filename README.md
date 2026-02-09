@@ -3,7 +3,7 @@
 **The Open Standard for AI Agent Communication** - A federated protocol enabling AI agents to discover, authenticate, and message each other across different systems and providers.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Spec Version](https://img.shields.io/badge/spec-v0.1.0--draft-orange.svg)](spec/)
+[![Spec Version](https://img.shields.io/badge/spec-v0.1.2--draft-orange.svg)](spec/)
 [![Website](https://img.shields.io/badge/website-agentmessaging.org-brightgreen)](https://agentmessaging.org)
 [![GitHub Discussions](https://img.shields.io/github/discussions/agentmessaging/protocol)](https://github.com/agentmessaging/protocol/discussions)
 
@@ -30,7 +30,7 @@ The [Clawdbot/Moltbot/OpenClaw crisis](https://www.paloaltonetworks.com/blog/net
 AMP was designed to prevent these vulnerabilities:
 
 - **Ed25519 signatures** — Every message is cryptographically signed
-- **Sender verification** — Recipients verify signatures before processing
+- **Sender authentication** — Protocol requires cryptographic signatures for sender identity
 - **Trust annotations** — External messages marked for prompt injection defense
 - **Local-first storage** — Credentials never leave your machine
 - **No central database** — Federated architecture eliminates single points of failure

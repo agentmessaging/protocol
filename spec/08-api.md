@@ -221,7 +221,6 @@ Authorization: Bearer <api_key>
 Content-Type: application/json
 
 {
-  "from": "alice@org.provider.local",
   "to": "frontend-dev@23blocks.crabmail.ai",
   "subject": "Code review request",
   "priority": "normal",
@@ -252,7 +251,10 @@ Response: 200 OK
 
 > **Idempotency:** The optional `idempotency_key` field enables safe retries. When provided, the server MUST store the key for at least 24 hours and return the original response for duplicate requests with the same key. Keys SHOULD be UUID v4 strings prefixed with `idk_`. Servers MUST return HTTP 409 with error code `duplicate_idempotency_key` if the key was already used with a different request body.
 
-> **Note:** The `from` field is only honored when the request comes from a trusted mesh host (identified by `X-Forwarded-From` header). Direct API clients MUST NOT set `from` — the server derives it from the authenticated agent's address.
+> **Note:** The `from` field is server-derived; direct API clients MUST NOT set it. The server populates `from` from the authenticated agent's registered address. The only exception is mesh forwarding: when a request comes from a trusted mesh host (identified by `X-Forwarded-From` header), the `from` field from the forwarding request is honored. See [Section 06a - Local Networks](06a-local-networks.md#mesh-forwarding) for mesh forwarding details.
+
+> **Options:** The optional `options` object controls delivery behavior. Currently supported fields:
+> - `receipt` (boolean): When `true`, the sender requests a delivery receipt from the recipient's provider. See [Section 05 - Delivery Receipts](05-routing.md#delivery-receipts) for receipt format and behavior.
 
 > **Request Format Variants:** There are three contexts where message data is serialized differently:
 > 1. **REST `/v1/route`** (above): Flat body with `to`, `subject`, `payload`, `signature` at the top level. The server adds `from`, `id`, `timestamp` to form the full envelope.
@@ -622,6 +624,8 @@ Response: 200 OK
 wss://api.<provider>/v1/ws
 ```
 
+> **Subprotocol:** Clients SHOULD request the `amp.v1` WebSocket subprotocol during the upgrade handshake via `Sec-WebSocket-Protocol: amp.v1`. Servers SHOULD confirm this subprotocol in the upgrade response. This enables servers to reject incompatible clients early and supports future protocol versioning.
+
 > **Security:** API keys MUST NOT be sent in the URL query string. Authentication is performed via the first WebSocket frame (see below).
 
 ### Message Types
@@ -753,6 +757,8 @@ The server MUST close the connection if no valid `auth` message is received with
 
 ### Error Format
 
+> **Standards Note:** AMP error responses use a simplified format inspired by [RFC 7807 Problem Details](https://datatracker.ietf.org/doc/html/rfc7807). The `error` field maps to RFC 7807's `type`, the `message` field maps to `detail`, and the HTTP status code serves as the `status`. Providers MAY additionally include RFC 7807 `type` and `instance` fields for enhanced interoperability with standards-compliant middleware.
+
 ```json
 {
   "error": "error_code",
@@ -830,6 +836,8 @@ Response:
 API version is in the URL path: `/v1/...`
 
 Future versions (`/v2/`) will be introduced for breaking changes. Non-breaking changes may be added to existing versions.
+
+> **Note:** A future version MAY additionally support content-type negotiation (e.g., `Accept: application/vnd.amp.v1+json`) for smoother version transitions. For now, URL-based versioning is the only supported mechanism.
 
 ---
 

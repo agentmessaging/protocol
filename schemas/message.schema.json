@@ -1,0 +1,281 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://agentmessaging.org/schemas/message.schema.json",
+  "title": "AMP Message Schema",
+  "description": "JSON Schema for Agent Messaging Protocol (AMP) messages. Validates the full stored message format with envelope (routing metadata), payload (message content), and optional local metadata. Based on AMP spec v0.1.2, sections 04 (Messages) and 07 (Security).",
+  "type": "object",
+  "properties": {
+    "envelope": {
+      "$ref": "#/definitions/envelope"
+    },
+    "payload": {
+      "$ref": "#/definitions/payload"
+    },
+    "local": {
+      "$ref": "#/definitions/local"
+    }
+  },
+  "required": ["envelope", "payload"],
+  "additionalProperties": false,
+  "definitions": {
+    "envelope": {
+      "title": "Message Envelope",
+      "description": "Routing metadata visible to providers. Contains addressing, threading, priority, timestamp, and the sender's cryptographic signature.",
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string",
+          "description": "Protocol version identifier. Current version is 'amp/0.1'. Recipients use this field to select the correct parsing logic for forward compatibility.",
+          "pattern": "^amp/[0-9]+\\.[0-9]+$",
+          "examples": ["amp/0.1"]
+        },
+        "id": {
+          "type": "string",
+          "description": "Unique message identifier assigned by the provider at acceptance time. Format: msg_<unix_timestamp>_<random_suffix>. Must not contain path separators, '..', or null bytes.",
+          "pattern": "^msg_[0-9]+_[a-zA-Z0-9]+$",
+          "examples": ["msg_1706648400_abc123"]
+        },
+        "from": {
+          "type": "string",
+          "description": "Sender's full AMP address in the format name@tenant.provider (e.g., 'alice@acme.crabmail.ai'). Providers must verify this matches the authenticated agent's registered address.",
+          "pattern": "^[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\\.[a-zA-Z0-9._-]+$",
+          "examples": ["alice@acme.crabmail.ai"]
+        },
+        "to": {
+          "type": "string",
+          "description": "Recipient's full AMP address in the format name@tenant.provider (e.g., 'bob@acme.crabmail.ai').",
+          "pattern": "^[a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\\.[a-zA-Z0-9._-]+$",
+          "examples": ["bob@acme.crabmail.ai"]
+        },
+        "subject": {
+          "type": "string",
+          "description": "Message subject line. Maximum 256 characters.",
+          "maxLength": 256,
+          "minLength": 1
+        },
+        "priority": {
+          "type": "string",
+          "description": "Message priority level affecting delivery behavior. Defaults to 'normal' if omitted.",
+          "enum": ["urgent", "high", "normal", "low"],
+          "default": "normal"
+        },
+        "timestamp": {
+          "type": "string",
+          "description": "ISO 8601 timestamp assigned by the provider at message acceptance time. Clients must not set this field in route requests; providers must overwrite it if present.",
+          "format": "date-time",
+          "examples": ["2025-01-30T10:00:00Z"]
+        },
+        "expires_at": {
+          "type": "string",
+          "description": "Optional ISO 8601 expiration timestamp. When present, agents and providers should reject messages where this time is in the past. Relay queues should use this for TTL instead of the default 7-day window.",
+          "format": "date-time",
+          "examples": ["2025-02-06T10:00:00Z"]
+        },
+        "signature": {
+          "type": "string",
+          "description": "Base64-encoded Ed25519 signature of the canonical string: from|to|subject|priority|in_reply_to|payload_hash. Only client-controlled fields are signed so servers can add id/timestamp afterward.",
+          "pattern": "^[A-Za-z0-9+/=]+$"
+        },
+        "in_reply_to": {
+          "description": "Message ID this is a reply to, or null if not a reply. Included in the signing canonical string to prevent thread hijacking.",
+          "oneOf": [
+            {
+              "type": "string",
+              "pattern": "^msg_[0-9]+_[a-zA-Z0-9]+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "thread_id": {
+          "type": "string",
+          "description": "ID of the first message in the thread. Always equals the originating message's id. Not included in the signing canonical string; recipients should derive thread grouping from in_reply_to chains.",
+          "pattern": "^msg_[0-9]+_[a-zA-Z0-9]+$",
+          "examples": ["msg_1706648400_abc123"]
+        }
+      },
+      "required": [
+        "version",
+        "id",
+        "from",
+        "to",
+        "subject",
+        "timestamp",
+        "signature",
+        "thread_id"
+      ],
+      "additionalProperties": false
+    },
+    "payload": {
+      "title": "Message Payload",
+      "description": "Message content including type, body, optional structured context, and optional file attachments. The entire payload is covered by payload_hash in the message signature. Providers must preserve this object as-is after routing.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Message type. Standard types: request, response, notification, alert, task, status, handoff, ack, update, system. Custom types use a namespace prefix (e.g., 'github:pull_request').",
+          "examples": ["request", "response", "notification", "alert", "task", "status", "handoff", "ack", "update", "system"]
+        },
+        "message": {
+          "type": "string",
+          "description": "Main message body. Maximum 64 KB (65536 bytes).",
+          "maxLength": 65536
+        },
+        "context": {
+          "type": "object",
+          "description": "Structured context data relevant to the message (e.g., git repo, branch, files, references). Providers must preserve this object as-is and must not modify or validate its contents. Maximum 256 KB."
+        },
+        "attachments": {
+          "type": "array",
+          "description": "File attachments referenced by the message. Attachment file content is stored externally by the provider; only metadata appears here. Covered by payload_hash in the signature.",
+          "items": {
+            "$ref": "#/definitions/attachment"
+          },
+          "maxItems": 10
+        }
+      },
+      "required": ["type", "message"],
+      "additionalProperties": false
+    },
+    "attachment": {
+      "title": "Attachment Object",
+      "description": "Metadata for a file attachment stored externally by the provider. Contains provider-assigned fields including the signed download URL and security scan result.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Provider-assigned attachment ID. Format: att_<unix_timestamp>_<random_hex>. Must not contain path separators, '..', or null bytes.",
+          "pattern": "^att_[0-9]+_[a-f0-9]+$",
+          "examples": ["att_1706648400_abc123"]
+        },
+        "filename": {
+          "type": "string",
+          "description": "Original filename, sanitized by the provider. Only characters in [a-zA-Z0-9._-] are permitted. Must not match reserved OS names or contain path separators, null bytes, or control characters.",
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[a-zA-Z0-9._-]+$"
+        },
+        "content_type": {
+          "type": "string",
+          "description": "MIME type of the file (e.g., 'text/plain', 'application/pdf', 'image/png').",
+          "examples": ["text/plain", "application/pdf", "image/png"]
+        },
+        "size": {
+          "type": "integer",
+          "description": "File size in bytes. Maximum 25 MB (26,214,400 bytes).",
+          "minimum": 0,
+          "maximum": 26214400
+        },
+        "digest": {
+          "type": "string",
+          "description": "Content hash in the format sha256:<lowercase_hex>. Used to verify downloaded file integrity. Implementations must reject unrecognized algorithm prefixes.",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "url": {
+          "type": "string",
+          "description": "Provider-signed download URL. Cross-provider recipients can download without additional authentication.",
+          "format": "uri"
+        },
+        "scan_status": {
+          "type": "string",
+          "description": "Security scan result. In routed messages: 'clean', 'basic_clean', or 'suspicious'. 'pending' is valid only in upload API responses. 'unscanned' is valid only for local filesystem delivery. 'rejected' attachments must not be routed.",
+          "enum": ["pending", "clean", "basic_clean", "unscanned", "suspicious", "rejected"]
+        },
+        "uploaded_at": {
+          "type": "string",
+          "description": "ISO 8601 timestamp of when the file was uploaded.",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "type": "string",
+          "description": "ISO 8601 expiration timestamp. Must be at least 7 days from upload time for relay queue compatibility. Providers must not modify this field after routing.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "filename",
+        "content_type",
+        "size",
+        "digest",
+        "url",
+        "scan_status",
+        "uploaded_at",
+        "expires_at"
+      ],
+      "additionalProperties": false
+    },
+    "local": {
+      "title": "Local Metadata",
+      "description": "Agent-local metadata not transmitted over the wire. Added by the receiving agent or provider for local storage and processing. This section is not covered by the message signature.",
+      "type": "object",
+      "properties": {
+        "received_at": {
+          "type": "string",
+          "description": "ISO 8601 timestamp of when the message was received locally.",
+          "format": "date-time"
+        },
+        "status": {
+          "type": "string",
+          "description": "Local message status for inbox management.",
+          "enum": ["unread", "read", "archived"]
+        },
+        "read_at": {
+          "description": "ISO 8601 timestamp of when the message was read, or null if unread.",
+          "oneOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "delivery_method": {
+          "type": "string",
+          "description": "How the message was delivered to this agent.",
+          "examples": ["websocket", "webhook", "polling", "relay", "filesystem"]
+        },
+        "verified": {
+          "type": "boolean",
+          "description": "Whether the message signature was successfully verified against the sender's public key."
+        },
+        "security": {
+          "$ref": "#/definitions/security_metadata"
+        }
+      },
+      "additionalProperties": false
+    },
+    "security_metadata": {
+      "title": "Security Metadata",
+      "description": "Security classification and injection detection results applied by the content security module per protocol section 07.",
+      "type": "object",
+      "properties": {
+        "trust": {
+          "type": "string",
+          "description": "Trust level classification based on signature verification and sender relationship. 'verified' = same tenant with valid signature, 'external' = cross-tenant/provider with valid signature, 'untrusted' = invalid/missing signature.",
+          "enum": ["verified", "external", "untrusted"]
+        },
+        "injection_flags": {
+          "description": "Array of injection pattern identifiers detected in the message content, or empty array if none detected.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "wrapped": {
+          "type": "boolean",
+          "description": "Whether the message content was wrapped in <external-content> tags per section 07 content security requirements."
+        },
+        "verified_at": {
+          "type": "string",
+          "description": "ISO 8601 timestamp of when the security classification was performed.",
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

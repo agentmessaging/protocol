@@ -1,0 +1,240 @@
+{
+  "_comment": "AMP Protocol Test Vectors - Known input/output pairs for interoperability testing",
+  "_version": "1.1",
+  "_spec": "https://github.com/agentmessaging/protocol",
+
+  "address_parsing": {
+    "_description": "Address format: name@tenant.provider. Short names have no tenant/provider.",
+    "test_cases": [
+      {
+        "id": "addr-001",
+        "description": "Standard external address with single-segment tenant",
+        "input": "alice@acme.crabmail.ai",
+        "expected": {
+          "name": "alice",
+          "tenant": "acme",
+          "provider": "crabmail.ai",
+          "is_local": false
+        }
+      },
+      {
+        "id": "addr-002",
+        "description": "External address with multi-segment tenant (dot-separated)",
+        "input": "bob@team.acme.crabmail.ai",
+        "expected": {
+          "name": "bob",
+          "tenant": "team.acme",
+          "provider": "crabmail.ai",
+          "is_local": false
+        }
+      },
+      {
+        "id": "addr-003",
+        "description": "Local provider address (aimaestro.local domain)",
+        "input": "agent@org.aimaestro.local",
+        "expected": {
+          "name": "agent",
+          "tenant": "org",
+          "provider": "aimaestro.local",
+          "is_local": true
+        }
+      },
+      {
+        "id": "addr-004",
+        "description": "Short form address (name only, no @ sign) - expanded using configured tenant at runtime",
+        "input": "simple-name",
+        "expected": {
+          "name": "simple-name",
+          "tenant": null,
+          "provider": null,
+          "is_local": null
+        }
+      }
+    ]
+  },
+
+  "payload_hash": {
+    "_description": "Payload hash is base64(SHA256(compact_sorted_json)). JSON keys MUST be sorted alphabetically at all nesting levels. Compact means no whitespace. No trailing newline before hashing.",
+    "test_cases": [
+      {
+        "id": "hash-001",
+        "description": "Simple notification payload with two keys",
+        "input_payload": {
+          "type": "notification",
+          "message": "Hello"
+        },
+        "compact_sorted_json": "{\"message\":\"Hello\",\"type\":\"notification\"}",
+        "expected_sha256_base64": "4Z/XSV1AZKYKorrN9OyxY5kTmYXHIZY37sGUfOrHkdg="
+      },
+      {
+        "id": "hash-002",
+        "description": "Message payload with attachments array (keys sorted at all levels)",
+        "input_payload": {
+          "type": "message",
+          "message": "See attached",
+          "attachments": [
+            {
+              "filename": "doc.pdf",
+              "mime_type": "application/pdf",
+              "size": 1024,
+              "digest": "sha256:abc123"
+            }
+          ]
+        },
+        "compact_sorted_json": "{\"attachments\":[{\"digest\":\"sha256:abc123\",\"filename\":\"doc.pdf\",\"mime_type\":\"application/pdf\",\"size\":1024}],\"message\":\"See attached\",\"type\":\"message\"}",
+        "expected_sha256_base64": "bE6R8lh+sLvN5+g5bucp+rbMYJ0M9qkqH+d702x/yWQ="
+      }
+    ]
+  },
+
+  "canonical_string": {
+    "_description": "Canonical signing format (v1.1): from|to|subject|priority|in_reply_to|payload_hash. Empty fields use empty string (not null). Only client-controlled fields are signed.",
+    "test_cases": [
+      {
+        "id": "canon-001",
+        "description": "Standard message with no in_reply_to",
+        "input": {
+          "from": "alice@acme.crabmail.ai",
+          "to": "bob@acme.crabmail.ai",
+          "subject": "Hello",
+          "priority": "normal",
+          "in_reply_to": "",
+          "payload_hash": "4Z/XSV1AZKYKorrN9OyxY5kTmYXHIZY37sGUfOrHkdg="
+        },
+        "expected_canonical": "alice@acme.crabmail.ai|bob@acme.crabmail.ai|Hello|normal||4Z/XSV1AZKYKorrN9OyxY5kTmYXHIZY37sGUfOrHkdg="
+      },
+      {
+        "id": "canon-002",
+        "description": "Reply message with in_reply_to set and urgent priority",
+        "input": {
+          "from": "bob@acme.crabmail.ai",
+          "to": "alice@acme.crabmail.ai",
+          "subject": "Re: Hello",
+          "priority": "urgent",
+          "in_reply_to": "msg_1706648400_abc123",
+          "payload_hash": "/NLmVfR3svEribQpxW+NNQKd8a1wxocA7BX7JcFcm6o="
+        },
+        "expected_canonical": "bob@acme.crabmail.ai|alice@acme.crabmail.ai|Re: Hello|urgent|msg_1706648400_abc123|/NLmVfR3svEribQpxW+NNQKd8a1wxocA7BX7JcFcm6o="
+      },
+      {
+        "id": "canon-003",
+        "description": "Cross-provider message with low priority",
+        "input": {
+          "from": "agent@org.aimaestro.local",
+          "to": "bob@team.acme.crabmail.ai",
+          "subject": "Status Update",
+          "priority": "low",
+          "in_reply_to": "",
+          "payload_hash": "bE6R8lh+sLvN5+g5bucp+rbMYJ0M9qkqH+d702x/yWQ="
+        },
+        "expected_canonical": "agent@org.aimaestro.local|bob@team.acme.crabmail.ai|Status Update|low||bE6R8lh+sLvN5+g5bucp+rbMYJ0M9qkqH+d702x/yWQ="
+      }
+    ]
+  },
+
+  "message_id_validation": {
+    "_description": "Message IDs must match the format msg_<timestamp>_<hex>. This prevents path traversal attacks in filesystem-based storage. Regex: ^msg_[0-9]+_[a-f0-9]+$",
+    "test_cases": [
+      {
+        "id": "msgid-001",
+        "description": "Valid message ID with standard timestamp and hex suffix",
+        "input": "msg_1706648400_abc123",
+        "expected_valid": true
+      },
+      {
+        "id": "msgid-002",
+        "description": "Valid message ID with longer hex suffix",
+        "input": "msg_1706648400_deadbeef0099",
+        "expected_valid": true
+      },
+      {
+        "id": "msgid-003",
+        "description": "Invalid: path traversal attempt",
+        "input": "../../../etc/passwd",
+        "expected_valid": false,
+        "reason": "Contains path traversal characters"
+      },
+      {
+        "id": "msgid-004",
+        "description": "Invalid: slash in hex portion (directory escape)",
+        "input": "msg_1706648400_abc/123",
+        "expected_valid": false,
+        "reason": "Contains slash character in hex portion"
+      },
+      {
+        "id": "msgid-005",
+        "description": "Invalid: missing msg_ prefix",
+        "input": "1706648400_abc123",
+        "expected_valid": false,
+        "reason": "Missing required msg_ prefix"
+      },
+      {
+        "id": "msgid-006",
+        "description": "Invalid: uppercase hex characters",
+        "input": "msg_1706648400_ABC123",
+        "expected_valid": false,
+        "reason": "Hex portion must be lowercase"
+      },
+      {
+        "id": "msgid-007",
+        "description": "Invalid: empty string",
+        "input": "",
+        "expected_valid": false,
+        "reason": "Empty string does not match format"
+      }
+    ]
+  },
+
+  "scan_status": {
+    "_description": "Valid scan_status values for the content security module. These indicate the result of scanning external message content for injection patterns.",
+    "valid_values": [
+      {
+        "id": "scan-valid-001",
+        "value": "pending",
+        "description": "Message has not yet been scanned"
+      },
+      {
+        "id": "scan-valid-002",
+        "value": "clean",
+        "description": "Message scanned; no suspicious patterns detected"
+      },
+      {
+        "id": "scan-valid-003",
+        "value": "basic_clean",
+        "description": "Message passed basic scanning checks"
+      },
+      {
+        "id": "scan-valid-004",
+        "value": "unscanned",
+        "description": "Message was not scanned (e.g., scanning unavailable)"
+      },
+      {
+        "id": "scan-valid-005",
+        "value": "suspicious",
+        "description": "Message contains patterns that may indicate prompt injection"
+      },
+      {
+        "id": "scan-valid-006",
+        "value": "rejected",
+        "description": "Message was rejected due to detected malicious content"
+      }
+    ],
+    "invalid_values": [
+      {
+        "id": "scan-invalid-001",
+        "value": "text_clean",
+        "reason": "Not a recognized scan_status value"
+      },
+      {
+        "id": "scan-invalid-002",
+        "value": "unknown",
+        "reason": "Not a recognized scan_status value; use 'unscanned' instead"
+      },
+      {
+        "id": "scan-invalid-003",
+        "value": "safe",
+        "reason": "Not a recognized scan_status value; use 'clean' instead"
+      }
+    ]
+  }
+}
