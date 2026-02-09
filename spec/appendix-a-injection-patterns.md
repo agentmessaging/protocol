@@ -1,6 +1,7 @@
 # Appendix A — Prompt Injection Patterns
 
 **Status:** Informative (non-normative)
+**Version:** 0.1.2
 
 This appendix provides a reference catalog of prompt injection pattern categories that target AI agents. Implementations SHOULD use this as a starting point and maintain their own updated pattern databases.
 
@@ -114,4 +115,4 @@ Attempts to bypass text-based detection using character encoding.
 
 ---
 
-Previous: [08 - API](08-api.md)
+Previous: [09 - External Agents](09-external-agents.md)

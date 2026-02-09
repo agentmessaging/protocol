@@ -1,7 +1,7 @@
 # 06 - Federation
 
 **Status:** Draft
-**Version:** 0.1.0
+**Version:** 0.1.2
 
 ## Overview
 
@@ -165,6 +165,8 @@ X-AMP-Timestamp: 1706648400
   "sender_public_key": "-----BEGIN PUBLIC KEY-----\n..."
 }
 ```
+
+Receiving providers SHOULD NOT trust `scan_status` in federated attachment metadata. Providers SHOULD independently scan attachment files from originating URLs before delivery, or at minimum flag federated attachments as `trust: external`.
 
 ### Provider Authentication
 

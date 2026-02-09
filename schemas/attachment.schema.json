@@ -1,0 +1,240 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentmessaging.org/schemas/attachment.schema.json",
+  "title": "AMP Attachment Schema",
+  "description": "JSON Schema for Agent Messaging Protocol (AMP) attachment objects, upload requests/responses, and route requests with attachments. Based on AMP spec sections 04 (Messages) and 08 (API).",
+  "$ref": "#/$defs/route_request",
+  "$defs": {
+    "attachment_object": {
+      "title": "Attachment Object",
+      "description": "An attachment as it appears in the message payload attachments array. Contains provider-assigned metadata including the signed download URL and security scan result.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Provider-assigned attachment ID. Format: att_<unix_timestamp>_<random_hex>. Must not contain path separators, '..', or null bytes.",
+          "pattern": "^att_[0-9]+_[a-f0-9]+$"
+        },
+        "filename": {
+          "type": "string",
+          "description": "Original filename, sanitized by the provider. Must not contain path separators, null bytes, or control characters. Only characters in [a-zA-Z0-9._-] are permitted.",
+          "maxLength": 255,
+          "minLength": 1
+        },
+        "content_type": {
+          "type": "string",
+          "description": "MIME type of the file (e.g., 'text/plain', 'application/pdf', 'image/png')."
+        },
+        "size": {
+          "type": "integer",
+          "description": "File size in bytes. Maximum 25 MB (26,214,400 bytes).",
+          "minimum": 0,
+          "maximum": 26214400
+        },
+        "digest": {
+          "type": "string",
+          "description": "Content hash in the format sha256:<lowercase_hex>. Used to verify downloaded file integrity. Implementations must reject unrecognized algorithm prefixes.",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "url": {
+          "type": "string",
+          "description": "Provider-signed download URL. Cross-provider recipients can download without additional authentication.",
+          "format": "uri"
+        },
+        "scan_status": {
+          "type": "string",
+          "description": "Security scan result. In routed message payloads, only 'clean' or 'suspicious' are valid. 'pending' is valid only in upload API responses before routing. Providers must not route messages with 'rejected' attachments.",
+          "enum": ["pending", "clean", "basic_clean", "suspicious", "rejected"]
+        },
+        "uploaded_at": {
+          "type": "string",
+          "description": "ISO 8601 timestamp of when the file was uploaded.",
+          "format": "date-time"
+        },
+        "expires_at": {
+          "type": "string",
+          "description": "ISO 8601 expiration timestamp. Must be at least 7 days from upload time for relay queue compatibility. Providers must not modify this field after routing.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "filename",
+        "content_type",
+        "size",
+        "digest",
+        "url",
+        "scan_status",
+        "uploaded_at",
+        "expires_at"
+      ],
+      "additionalProperties": false
+    },
+    "upload_request": {
+      "title": "Upload Request",
+      "description": "Request body for POST /v1/attachments/upload. Initiates the two-step upload flow by requesting a presigned upload URL from the provider.",
+      "type": "object",
+      "properties": {
+        "filename": {
+          "type": "string",
+          "description": "Original filename for the attachment.",
+          "maxLength": 255,
+          "minLength": 1
+        },
+        "content_type": {
+          "type": "string",
+          "description": "MIME type of the file being uploaded."
+        },
+        "size": {
+          "type": "integer",
+          "description": "File size in bytes. Maximum 25 MB (26,214,400 bytes).",
+          "minimum": 1,
+          "maximum": 26214400
+        },
+        "digest": {
+          "type": "string",
+          "description": "Content hash in the format sha256:<lowercase_hex>. Provider validates format at upload time and rejects unrecognized algorithm prefixes with HTTP 422.",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      },
+      "required": [
+        "filename",
+        "content_type",
+        "size",
+        "digest"
+      ],
+      "additionalProperties": false
+    },
+    "upload_response": {
+      "title": "Upload Response",
+      "description": "Response from POST /v1/attachments/upload. Contains the presigned upload URL and method. The presigned URL must expire within 1 hour and is single-use.",
+      "type": "object",
+      "properties": {
+        "attachment_id": {
+          "type": "string",
+          "description": "Server-authoritative attachment ID. Clients must use this ID for all subsequent API calls and when building the message payload."
+        },
+        "upload_url": {
+          "type": "string",
+          "description": "Presigned URL where the agent should upload the file content directly.",
+          "format": "uri"
+        },
+        "upload_method": {
+          "type": "string",
+          "description": "HTTP method to use when uploading to the presigned URL.",
+          "enum": ["PUT"]
+        },
+        "upload_headers": {
+          "type": "object",
+          "description": "HTTP headers to include when uploading to the presigned URL (e.g., Content-Type).",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "expires_in": {
+          "type": "integer",
+          "description": "Number of seconds until the presigned upload URL expires. Must not exceed 3600 (1 hour).",
+          "minimum": 1,
+          "maximum": 3600
+        }
+      },
+      "required": [
+        "attachment_id",
+        "upload_url",
+        "upload_method",
+        "expires_in"
+      ],
+      "additionalProperties": false
+    },
+    "payload": {
+      "title": "Message Payload",
+      "description": "The payload object within a route request. Contains the message type, body, optional context, and optional attachments array. The entire payload is covered by payload_hash in the message signature.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Message type. Standard types: request, response, notification, alert, task, status, handoff, ack, update, system. Custom types use a namespace prefix (e.g., 'github:pull_request')."
+        },
+        "message": {
+          "type": "string",
+          "description": "Main message body. Maximum 64 KB."
+        },
+        "context": {
+          "type": "object",
+          "description": "Structured context data relevant to the message. Providers must preserve this object as-is and must not modify or validate its contents. Maximum 256 KB."
+        },
+        "attachments": {
+          "type": "array",
+          "description": "File attachments referenced by the message. Maximum 10 attachments per message, 100 MB total size. Attachment metadata is included in payload_hash for signature integrity.",
+          "items": {
+            "$ref": "#/$defs/attachment_object"
+          },
+          "maxItems": 10
+        }
+      },
+      "required": [
+        "type",
+        "message"
+      ],
+      "additionalProperties": false
+    },
+    "route_request": {
+      "title": "Route Request",
+      "description": "Request body for POST /v1/route. Sends a message through the AMP provider. The provider assigns envelope.id and envelope.timestamp at acceptance time. Clients must not include those fields. The 'from' field is only honored from trusted mesh hosts; direct API clients must not set it.",
+      "type": "object",
+      "properties": {
+        "to": {
+          "type": "string",
+          "description": "Recipient's full AMP address (e.g., 'frontend-dev@23blocks.crabmail.ai')."
+        },
+        "subject": {
+          "type": "string",
+          "description": "Message subject. Maximum 256 characters.",
+          "maxLength": 256
+        },
+        "priority": {
+          "type": "string",
+          "description": "Message priority level. Affects delivery behavior.",
+          "enum": ["low", "normal", "high", "urgent"],
+          "default": "normal"
+        },
+        "in_reply_to": {
+          "description": "Message ID this is a reply to, or null if not a reply.",
+          "oneOf": [
+            { "type": "string" },
+            { "type": "null" }
+          ]
+        },
+        "signature": {
+          "type": "string",
+          "description": "Base64-encoded Ed25519 signature of the canonical string: from|to|subject|priority|in_reply_to|payload_hash."
+        },
+        "idempotency_key": {
+          "type": "string",
+          "description": "Optional idempotency key for safe retries. Should be UUID v4 prefixed with 'idk_'. Server stores the key for at least 24 hours and returns the original response for duplicate requests."
+        },
+        "payload": {
+          "$ref": "#/$defs/payload"
+        },
+        "options": {
+          "type": "object",
+          "description": "Optional delivery options.",
+          "properties": {
+            "receipt": {
+              "type": "boolean",
+              "description": "When true, request a delivery receipt from the provider."
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "to",
+        "subject",
+        "signature",
+        "payload"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

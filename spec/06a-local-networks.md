@@ -1,7 +1,7 @@
 # 06a - Local Networks
 
 **Status:** Draft
-**Version:** 0.1.0
+**Version:** 0.1.2
 
 ## Overview
 
@@ -49,11 +49,12 @@ AMP supports two addressing patterns for local networks:
 <agent-name>@<host-id>.<organization>.<provider>.local
 ```
 
-Organizations are stable identifiers that persist across host changes; host-ids are dynamic and change as machines are added or removed. Mesh routing uses dynamic discovery, not address-encoded host-ids.
-
+**Host-scoped without organization (simplified):**
 ```
 <agent-name>@<host-id>.<provider>.local
 ```
+
+Organizations are stable identifiers that persist across host changes; host-ids are dynamic and change as machines are added or removed. Mesh routing uses dynamic discovery, not address-encoded host-ids. The simplified host-scoped format without organization is valid for single-tenant deployments where the organization segment is unnecessary.
 
 | Component | Description | Example |
 |-----------|-------------|---------|
@@ -251,14 +252,16 @@ Content-Type: application/json
 X-Forwarded-From: host-a
 X-AMP-Envelope-Id: msg_1706648400_abc123
 X-AMP-Signature: <original_sender_signature>
-X-AMP-Sender-Key: <sender_public_key_hex>
+X-AMP-Sender-Key: <sender_public_key_pem_base64>
 ```
 
 Providers SHOULD also include optional audit headers for message tracing:
 
 ```http
-X-AMP-Sender-Key: <sender_public_key_hex>
+X-AMP-Sender-Key: <sender_public_key_pem_base64>
 ```
+
+> **Note:** The `sender_public_key` value MUST use PEM format on the wire to match the federation protocol (see [06 - Federation](06-federation.md)). Implementations MAY use hex encoding internally but MUST convert to PEM for inter-host and cross-provider transmission.
 
 And an optional `_forwarded` audit trail in the request body:
 ```json

@@ -1,7 +1,7 @@
 # 02 - Identity
 
 **Status:** Draft
-**Version:** 0.1.0
+**Version:** 0.1.2
 
 ## Agent Address Format
 
@@ -337,7 +337,7 @@ To send a message, the sender must resolve the recipient's address:
 ### Resolution API
 
 ```http
-GET /v1/agents/{address}
+GET /v1/agents/resolve/{address}
 Authorization: Bearer <api_key>
 
 Response:

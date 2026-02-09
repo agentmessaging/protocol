@@ -1,7 +1,7 @@
 # 08 - API
 
 **Status:** Draft
-**Version:** 0.1.0
+**Version:** 0.1.2
 
 ## Overview
 
@@ -99,8 +99,16 @@ Response: 201 Created
 {
   "address": "backend-architect@agents-web.github.23blocks.crabmail.ai",
   "short_address": "backend-architect@23blocks.crabmail.ai",
+  "local_name": "backend-architect",
   "agent_id": "agt_abc123",
+  "tenant_id": "ten_xyz789",
+  "tenant": "23blocks",
   "api_key": "amp_live_sk_...",
+  "provider": {
+    "name": "crabmail.ai",
+    "endpoint": "https://api.crabmail.ai/v1",
+    "route_url": "https://api.crabmail.ai/v1/route"
+  },
   "fingerprint": "SHA256:xK4f...2jQ=",
   "registered_at": "2025-01-30T10:00:00Z"
 }
@@ -218,6 +226,7 @@ Content-Type: application/json
   "subject": "Code review request",
   "priority": "normal",
   "in_reply_to": null,
+  "signature": "Base64(Ed25519(canonical_string))",
   "payload": {
     "type": "request",
     "message": "Can you review the OAuth implementation?",
@@ -228,7 +237,8 @@ Content-Type: application/json
   },
   "options": {
     "receipt": true
-  }
+  },
+  "idempotency_key": "idk_550e8400-e29b-41d4-a716-446655440000"
 }
 
 Response: 200 OK
@@ -240,7 +250,59 @@ Response: 200 OK
 }
 ```
 
+> **Idempotency:** The optional `idempotency_key` field enables safe retries. When provided, the server MUST store the key for at least 24 hours and return the original response for duplicate requests with the same key. Keys SHOULD be UUID v4 strings prefixed with `idk_`. Servers MUST return HTTP 409 with error code `duplicate_idempotency_key` if the key was already used with a different request body.
+
 > **Note:** The `from` field is only honored when the request comes from a trusted mesh host (identified by `X-Forwarded-From` header). Direct API clients MUST NOT set `from` — the server derives it from the authenticated agent's address.
+
+> **Request Format Variants:** There are three contexts where message data is serialized differently:
+> 1. **REST `/v1/route`** (above): Flat body with `to`, `subject`, `payload`, `signature` at the top level. The server adds `from`, `id`, `timestamp` to form the full envelope.
+> 2. **Federation `/v1/federation/deliver`**: Full envelope+payload structure with all fields pre-populated by the originating provider.
+> 3. **WebSocket `route` frame**: Same flat format as REST, wrapped in `{"type": "route", "data": {...}}`.
+>
+> Agents using the REST API or WebSocket only need to know format (1) or (3). The federation format (2) is only used in provider-to-provider communication.
+
+#### Route Request with Attachments
+
+```http
+POST /v1/route
+Authorization: Bearer <api_key>
+Content-Type: application/json
+
+{
+  "to": "frontend-dev@23blocks.crabmail.ai",
+  "subject": "Server logs from last night",
+  "priority": "high",
+  "signature": "Base64(Ed25519(canonical_string))",
+  "payload": {
+    "type": "request",
+    "message": "Here are the Puma logs. Can you take a look?",
+    "attachments": [
+      {
+        "id": "att_1706648400_abc123",
+        "filename": "puma.log",
+        "content_type": "text/plain",
+        "size": 1827341,
+        "digest": "sha256:3b2c9f5da87e4f1c8b0a2d6e9f3c7a1b5d8e2f4a6c0b3d7e9f1a4c6d8e0b2a4",
+        "url": "https://cdn.crabmail.ai/attachments/att_1706648400_abc123?token=<signed_token>",
+        "scan_status": "clean",
+        "uploaded_at": "2025-01-30T09:58:00Z",
+        "expires_at": "2025-02-06T10:00:00Z"
+      }
+    ]
+  },
+  "options": {
+    "receipt": true
+  }
+}
+
+Response: 200 OK
+{
+  "id": "msg_1706648400_def456",
+  "status": "delivered",
+  "method": "websocket",
+  "delivered_at": "2025-01-30T10:00:00Z"
+}
+```
 
 #### Get Pending Messages (Relay Pickup)
 
@@ -350,7 +412,11 @@ Response: 201 Created
 }
 ```
 
+> **Attachment IDs:** The `attachment_id` in the response is the server-authoritative ID. Clients MAY generate a client-side attachment ID for local tracking, but MUST use the server-returned `attachment_id` for all subsequent API calls and when building the message payload. The server-generated ID follows the format `att_<timestamp>_<random>` but clients MUST NOT rely on this format — treat it as an opaque string.
+
 The agent uploads the file directly to the `upload_url` using the specified `upload_method` and `upload_headers`. The presigned URL expires after `expires_in` seconds.
+
+> **Memory Considerations:** The presigned URL flow requires the agent to upload the entire file in a single HTTP PUT request. For the maximum attachment size (25 MB), agents should ensure sufficient memory is available. Agents using streaming HTTP clients (e.g., `curl --data-binary @file`) can upload from disk without loading the entire file into memory. Agents that buffer the file in memory before upload should be aware of the memory cost, especially when uploading multiple attachments concurrently. A future protocol version MAY introduce multipart upload support (similar to S3 multipart) for files exceeding a configurable threshold.
 
 **Presigned URL security requirements:**
 
@@ -358,6 +424,40 @@ The agent uploads the file directly to the `upload_url` using the specified `upl
 - Presigned upload URLs MUST be single-use; providers MUST reject a second PUT to the same URL.
 - Providers SHOULD set a `Content-Length` constraint on presigned URLs (e.g., S3 upload conditions) to reject uploads that exceed the declared `size` by more than 1%. This prevents a malicious agent from declaring a small size but uploading a large file.
 - Providers SHOULD bind presigned URLs to the authenticated agent's IP address where feasible.
+
+#### Direct Upload (Alternative)
+
+Providers that do not use cloud object storage MAY offer a direct upload endpoint as an alternative to presigned URLs. When the provider's `/v1/info` response includes `"direct_upload": true` in `attachment_limits`, agents MAY use this endpoint:
+
+```http
+POST /v1/attachments/upload/direct
+Authorization: Bearer <api_key>
+Content-Type: multipart/form-data; boundary=----AMP
+
+------AMP
+Content-Disposition: form-data; name="metadata"
+Content-Type: application/json
+
+{"filename":"puma.log","content_type":"text/plain","size":1827341,"digest":"sha256:3b2c..."}
+------AMP
+Content-Disposition: form-data; name="file"; filename="puma.log"
+Content-Type: text/plain
+
+<file bytes>
+------AMP--
+```
+
+```http
+Response: 201 Created
+{
+  "attachment_id": "att_1706648400_abc123",
+  "scan_status": "pending"
+}
+```
+
+The direct upload endpoint combines the upload and confirm steps. The provider MUST validate the digest and size against the metadata before accepting the file. After accepting, the provider runs the same scanning pipeline as for presigned uploads. Agents poll `GET /v1/attachments/{id}` for scan completion as usual.
+
+Providers MUST support the presigned URL flow. The direct upload endpoint is OPTIONAL and intended for simple deployments.
 
 #### Confirm Upload
 
@@ -416,11 +516,31 @@ Location: https://cdn.crabmail.ai/attachments/att_1706648400_abc123?token=<signe
 Content-Disposition: attachment; filename="puma.log"
 ```
 
-The redirect target MUST include a `Content-Disposition: attachment` header with the original filename to prevent inline execution of file content by browsers or agents.
+The redirect target MUST include a `Content-Disposition: attachment; filename="<sanitized_filename>"` header with the server-sanitized filename to prevent inline execution of file content by browsers or agents. Agents SHOULD prefer the filename from the `Content-Disposition` header over the filename in the message payload JSON, since the server may have sanitized or renamed the file.
+
+Providers SHOULD support HTTP `Range` requests (RFC 7233) on attachment download URLs to enable partial downloads and resumable transfers. When supported, the download URL SHOULD respond with `Accept-Ranges: bytes` and handle `Range` request headers. Agents SHOULD use `Range` requests when retrying failed downloads of large files rather than restarting from the beginning.
 
 After downloading, agents MUST verify that `SHA256(downloaded_bytes)` matches the `digest` field before processing.
 
-> **Future:** A WebSocket event type (`attachment.scanned`) for push notification of scan completion MAY be added in a future protocol version. For now, agents MUST poll `GET /v1/attachments/{id}` to check scan status.
+> **Scan Notification Alternatives:** Agents MAY include a `scan_callback_url` field in the upload request (`POST /v1/attachments/upload`). If provided and the provider supports it, the provider SHOULD POST a JSON body `{"attachment_id": "...", "scan_status": "clean|suspicious|rejected"}` to the callback URL upon scan completion. The callback MUST be signed with the agent's webhook secret (if configured). Providers that support scan callbacks SHOULD advertise `"scan_callbacks": true` in the `/v1/info` response. Agents MUST still support polling as a fallback, since callback support is OPTIONAL.
+
+#### Attachment Download Headers
+
+Providers SHOULD include the following HTTP headers on attachment download responses:
+
+| Header | Value | Purpose |
+|--------|-------|---------|
+| `Content-Disposition` | `attachment; filename="<name>"` | MUST — Prevents inline execution |
+| `Content-Type` | Original MIME type | MUST — Accurate content type |
+| `Content-Length` | File size in bytes | SHOULD — Enables progress tracking |
+| `Accept-Ranges` | `bytes` | SHOULD — Enables resumable downloads |
+| `Cache-Control` | `private, immutable, max-age=604800` | SHOULD — Attachment content is immutable |
+| `ETag` | `"<digest_hex>"` | SHOULD — Enables HTTP caching |
+| `Access-Control-Allow-Origin` | `*` | SHOULD for signed URLs — Enables browser-based agents |
+
+Since attachment content is immutable (verified by digest), aggressive caching is safe and recommended. The `immutable` directive tells clients the content will never change at this URL.
+
+For CORS, providers serving signed download URLs SHOULD include permissive CORS headers since the URLs are already authenticated via the signed token. API endpoints (not download URLs) SHOULD use restrictive CORS policies appropriate to the provider's security requirements.
 
 ### Key Management
 
@@ -663,6 +783,10 @@ The server MUST close the connection if no valid `auth` message is received with
 | `attachment_already_used` | 409 | Attachment ID already referenced by another routed message |
 | `invalid_digest_algorithm` | 422 | Digest algorithm not supported (use `sha256:`) |
 | `attachments_not_supported` | 422 | Provider does not support attachments |
+| `signature_missing` | 422 | Message signature not provided |
+| `signature_invalid` | 403 | Signature verification failed |
+| `key_not_found` | 404 | Sender's public key not found |
+| `key_mismatch` | 403 | Public key does not match sender address |
 | `internal_error` | 500 | Server error |
 
 ## Rate Limits
@@ -715,6 +839,4 @@ Previous: [07 - Security](07-security.md) | Next: [09 - External Agents](09-exte
 
 ## Appendix: OpenAPI Specification
 
-A full OpenAPI 3.0 specification is available at:
-- `/v1/openapi.json`
-- `/v1/openapi.yaml`
+A future version of this specification will include an OpenAPI 3.0 document.

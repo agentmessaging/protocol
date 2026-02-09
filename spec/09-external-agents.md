@@ -1,7 +1,7 @@
 # 09 - External Agent Integration
 
 **Status:** Draft
-**Version:** 0.1.0
+**Version:** 0.1.2
 
 ## Overview
 
@@ -246,6 +246,7 @@ Content-Type: application/json
 | `payload.type` | Yes | `request`, `response`, `notification`, `update` |
 | `payload.message` | Yes | Message body (max 64 KB) |
 | `payload.context` | No | Structured metadata (max 256 KB) |
+| `payload.attachments` | No | Array of attachment objects (see [Sending Attachments](#sending-attachments) below) |
 | `in_reply_to` | No | Message ID if this is a reply |
 
 ### Response
@@ -305,7 +306,7 @@ Response:
         "type": "request",
         "message": "Hello, external agent!"
       },
-      "sender_public_key": "hex...",
+      "sender_public_key": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA...\n-----END PUBLIC KEY-----",
       "queued_at": "2025-01-30T10:00:01Z",
       "expires_at": "2025-02-06T10:00:01Z"
     }
@@ -318,7 +319,7 @@ Response:
 ### Acknowledge Single Message
 
 ```http
-DELETE /v1/messages/pending?id=msg_1706648400_abc123
+DELETE /v1/messages/pending/msg_1706648400_abc123
 Authorization: Bearer <api_key>
 
 Response:
@@ -330,7 +331,7 @@ Response:
 ### Batch Acknowledge
 
 ```http
-POST /v1/messages/pending
+POST /v1/messages/pending/ack
 Authorization: Bearer <api_key>
 Content-Type: application/json
 
@@ -364,10 +365,9 @@ def check_messages():
         # Process message
         process_message(msg)
 
-        # Acknowledge receipt
+        # Acknowledge receipt (single ack = DELETE /v1/messages/pending/{msg_id})
         requests.delete(
-            f"{ENDPOINT}/messages/pending",
-            params={"id": msg["id"]},
+            f"{ENDPOINT}/messages/pending/{msg['id']}",
             headers=headers
         )
 
@@ -456,6 +456,19 @@ def send_with_attachment(to, subject, message, filepath):
     return result.json()
 ```
 
+### Attachment Error Handling
+
+| Error | Recovery |
+|-------|----------|
+| Upload URL expired | Request a new upload URL (`POST /v1/attachments/upload`) and re-upload |
+| Scan status `rejected` | File failed security scan. Do NOT retry with the same file. Notify the user and consider sending the message without the attachment |
+| Scan status `pending` after 5 minutes | Stop polling. Create a new upload request with a new attachment ID and retry |
+| Digest mismatch on download | File was corrupted or tampered. Re-download from the URL. If the mismatch persists, the attachment should be treated as compromised |
+| `attachment_expired` (HTTP 410) | Attachment has passed its TTL. The sender must re-upload and send a new message |
+| `attachment_already_used` (HTTP 409) | Attachment ID was already referenced by another routed message. Upload a new copy |
+
+When an attachment is `rejected`, the message can still be sent without the attachment by removing it from the `payload.attachments` array. Agents SHOULD inform the user that the attachment was blocked and why (if the error response includes details).
+
 ### Downloading Attachments
 
 When a received message includes attachments, use the `url` field to download:
@@ -463,11 +476,26 @@ When a received message includes attachments, use the `url` field to download:
 ```python
 def download_attachment(attachment, dest_dir):
     response = requests.get(attachment["url"])
+
+    # Verify size before processing
+    if len(response.content) != attachment["size"]:
+        raise Exception(
+            f"Size mismatch — expected {attachment['size']} bytes, "
+            f"got {len(response.content)} bytes"
+        )
+
     # Verify digest before saving
     digest = "sha256:" + hashlib.sha256(response.content).hexdigest()
     if digest != attachment["digest"]:
         raise Exception("Digest mismatch — file may be corrupted or tampered")
-    filepath = os.path.join(dest_dir, attachment["filename"])
+
+    # Use server-sanitized filename from Content-Disposition if available
+    filename = attachment["filename"]
+    cd = response.headers.get("Content-Disposition", "")
+    if 'filename="' in cd:
+        filename = cd.split('filename="')[1].split('"')[0]
+
+    filepath = os.path.join(dest_dir, filename)
     with open(filepath, "wb") as f:
         f.write(response.content)
     return filepath
@@ -490,15 +518,28 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 import base64
 
-def verify_signature(message, signature_b64, sender_public_key_hex):
-    # Reconstruct public key from hex
-    public_key_bytes = bytes.fromhex(sender_public_key_hex)
-    public_key = Ed25519PublicKey.from_public_bytes(public_key_bytes)
+def verify_signature(envelope, payload, sender_public_key_pem):
+    # Load public key from PEM format (wire format per Section 06)
+    # Implementations MAY use hex encoding internally but the wire format is PEM
+    from cryptography.hazmat.primitives.serialization import load_pem_public_key
+    public_key = load_pem_public_key(sender_public_key_pem.encode())
 
-    # Verify signature
-    signature = base64.b64decode(signature_b64)
+    # Construct the canonical string for verification per Section 04:
+    #   from|to|subject|priority|in_reply_to|payload_hash
+    # where payload_hash = Base64(SHA256(JSON.stringify(payload, sort_keys=True)))
+    import json, hashlib
+    payload_json = json.dumps(payload, separators=(',', ':'), sort_keys=True)
+    payload_hash = base64.b64encode(hashlib.sha256(payload_json.encode()).digest()).decode()
+    canonical = (
+        f"{envelope['from']}|{envelope['to']}|{envelope['subject']}|"
+        f"{envelope.get('priority', 'normal')}|{envelope.get('in_reply_to', '')}|"
+        f"{payload_hash}"
+    )
+
+    # Verify signature against canonical string
+    signature = base64.b64decode(envelope["signature"])
     try:
-        public_key.verify(signature, message.encode())
+        public_key.verify(signature, canonical.encode('utf-8'))
         return True
     except:
         return False

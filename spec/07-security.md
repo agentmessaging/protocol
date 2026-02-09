@@ -1,7 +1,7 @@
 # 07 - Security
 
 **Status:** Draft
-**Version:** 0.1.0
+**Version:** 0.1.2
 
 ## Security Model
 
@@ -93,8 +93,8 @@ import base64
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 def sign_message(from_addr, to_addr, subject, priority, in_reply_to, payload, private_key):
-    # 1. Calculate payload hash
-    payload_json = json.dumps(payload, separators=(',', ':'))
+    # 1. Calculate payload hash (keys sorted lexicographically at all nesting levels)
+    payload_json = json.dumps(payload, separators=(',', ':'), sort_keys=True)
     payload_hash = base64.b64encode(hashlib.sha256(payload_json.encode()).digest()).decode()
 
     # 2. Build canonical string
@@ -114,8 +114,8 @@ def verify_message(envelope, payload, sender_public_key):
     # 1. Extract signature
     signature = base64.b64decode(envelope["signature"])
 
-    # 2. Calculate payload hash
-    payload_json = json.dumps(payload, separators=(',', ':'))
+    # 2. Calculate payload hash (keys sorted lexicographically at all nesting levels)
+    payload_json = json.dumps(payload, separators=(',', ':'), sort_keys=True)
     payload_hash = base64.b64encode(hashlib.sha256(payload_json.encode()).digest()).decode()
 
     # 3. Recreate canonical string
@@ -366,7 +366,7 @@ Messages MAY include file attachments (see [04 - Messages](04-messages.md#attach
 
 ### Scanning Pipeline
 
-Providers MUST implement the following scanning pipeline before marking an attachment as `clean`:
+Providers MUST implement at minimum the **Required** scanning steps below before marking an attachment as `clean`. Providers that lack antivirus or injection scanning infrastructure MUST still implement the Required steps and MAY report `scan_status: "basic_clean"` to indicate that only basic checks were performed (no AV scan). Recipients SHOULD treat `basic_clean` the same as `clean` but MAY apply additional caution.
 
 ```
 Agent uploads file → Provider storage (e.g., S3)
@@ -375,32 +375,37 @@ Agent uploads file → Provider storage (e.g., S3)
 Provider confirms receipt
         │
         ▼
-Malware scan (ClamAV or commercial AV)           [MUST]
+Size and digest verification                      [MUST — Required]
         │
         ▼
-File type verification (magic bytes vs MIME)      [MUST]
+Blocked MIME type / executable detection           [MUST — Required]
         │
         ▼
-Size and digest verification                      [MUST]
+File type verification (magic bytes vs MIME)       [MUST — Required]
         │
         ▼
-Prompt injection scan (LLM-based or patterns)     [SHOULD]
+Malware scan (ClamAV or commercial AV)            [SHOULD — Recommended]
         │
         ▼
-Executable detection                              [MUST]
+Prompt injection scan (LLM-based or patterns)     [SHOULD — Recommended]
         │
         ▼
-scan_status = clean | suspicious | rejected
+scan_status = clean | basic_clean | suspicious | rejected
         │
-        ├── If clean → generate signed download URL
+        ├── If clean/basic_clean → generate signed download URL
         └── If rejected → delete file, block message routing
 ```
 
-- **Malware scan** (MUST): Providers MUST scan files with antivirus software (e.g., ClamAV) before routing.
-- **File type verification** (MUST): Providers MUST verify that the file's magic bytes match the declared `content_type` at the primary type level (e.g., a file with image magic bytes declared as `text/plain` is a mismatch). Files declared as `application/octet-stream` are exempt from magic byte verification. Empty files (0 bytes) are exempt from magic byte verification. Mismatches at the primary type level MUST result in `rejected` status.
-- **Size and digest verification** (MUST): Providers MUST verify that the file size matches `size` and that `SHA256(file_bytes)` matches `digest`.
-- **Prompt injection scan** (SHOULD): For text-extractable files (PDF, DOCX, TXT, CSV, JSON, XML, HTML, Markdown), providers SHOULD extract text content and scan for injection patterns from [Appendix A](appendix-a-injection-patterns.md). Files flagged with injection patterns SHOULD be marked `suspicious` (not `rejected`) so the recipient agent can make a trust decision.
-- **Executable detection** (MUST): Providers MUST reject files that are executable, regardless of declared MIME type.
+**Required steps (MUST):**
+
+- **Size and digest verification**: Providers MUST verify that the file size matches the declared `size` and that `SHA256(file_bytes)` matches the declared `digest`. Mismatches MUST result in `rejected` status.
+- **Blocked MIME type / executable detection**: Providers MUST reject files that are executable or have blocked MIME types (see below), regardless of declared MIME type.
+- **File type verification**: Providers MUST verify that the file's magic bytes match the declared `content_type` at the primary type level (e.g., a file with image magic bytes declared as `text/plain` is a mismatch). Files declared as `application/octet-stream` are exempt from magic byte verification. Empty files (0 bytes) are exempt from magic byte verification. Mismatches at the primary type level MUST result in `rejected` status.
+
+**Recommended steps (SHOULD):**
+
+- **Malware scan**: Providers SHOULD scan files with antivirus software (e.g., ClamAV) before routing. Providers without AV infrastructure MUST document this limitation in their `/v1/info` response via `"av_scanning": false` in the `attachment_limits` object.
+- **Prompt injection scan**: For text-extractable files (PDF, DOCX, TXT, CSV, JSON, XML, HTML, Markdown), providers SHOULD extract text content and scan for injection patterns from [Appendix A](appendix-a-injection-patterns.md). Files flagged with injection patterns SHOULD be marked `suspicious` (not `rejected`) so the recipient agent can make a trust decision.
 
 ### Blocked MIME Types
 

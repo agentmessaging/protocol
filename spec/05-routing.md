@@ -1,7 +1,7 @@
 # 05 - Routing
 
 **Status:** Draft
-**Version:** 0.1.0
+**Version:** 0.1.2
 
 ## Overview
 
@@ -288,6 +288,8 @@ Response:
 }
 ```
 
+> **Note:** The relay queue's `expires_at` is computed as `min(envelope.expires_at, queued_at + 7days)` if the envelope field is set, or `queued_at + 7days` otherwise.
+
 ### Acknowledging Pickup
 
 After processing, acknowledge to remove from queue:
@@ -384,8 +386,11 @@ When routing a message that contains attachments, the provider MUST perform the 
 2. Verify that all attachment IDs belong to the authenticated sender.
 3. If any attachment has `scan_status: pending`, return `409 Conflict` with error code `attachment_pending`.
 4. If any attachment has `scan_status: rejected`, return `422 Unprocessable Entity` with error code `attachment_rejected`.
+5. Verify that each attachment's `digest` and `size` in the payload match the values recorded during the upload and scanning pipeline.
 
 Providers MUST NOT deliver messages with rejected attachments. Messages with `suspicious` attachments MAY be delivered, but the provider MUST ensure the security metadata reflects the scan results so the recipient can make a trust decision.
+
+When routing messages with `suspicious` attachments, the provider MUST include security metadata per Section 07 and SHOULD return a warning in the route response (e.g., `"warnings": ["attachment_suspicious"]`).
 
 ## Delivery Receipts
 

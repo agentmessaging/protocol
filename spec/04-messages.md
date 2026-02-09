@@ -1,7 +1,7 @@
 # 04 - Messages
 
 **Status:** Draft
-**Version:** 0.1.0
+**Version:** 0.1.2
 
 ## Message Structure
 
@@ -20,7 +20,7 @@ Every message has two parts:
     "subject": "Question about the API",
     "priority": "normal",
     "timestamp": "2025-01-30T10:00:00Z",
-    "expires_at": "2025-01-31T10:00:00Z",
+    "expires_at": "2025-02-06T10:00:00Z",
     "signature": "base64_encoded_signature",
     "in_reply_to": null,
     "thread_id": "msg_1706648400_abc123"
@@ -40,7 +40,7 @@ Every message has two parts:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `version` | string | Yes | Protocol version (e.g., `"amp/0.1"`) |
+| `version` | string | Yes | Protocol version (e.g., `"amp/0.1"`). See note below. |
 | `id` | string | Yes | Unique message identifier |
 | `from` | string | Yes | Sender's full address |
 | `to` | string | Yes | Recipient's full address |
@@ -57,6 +57,8 @@ Every message has two parts:
 The `version` field identifies which version of the AMP protocol the message conforms to. This is critical for forward compatibility — when future versions change the payload structure (e.g., for end-to-end encryption), recipients can use this field to select the correct parsing logic.
 
 Current version: `"amp/0.1"`
+
+> **Note:** `amp/0.1` is the message envelope version. The discovery protocol uses `AMP1` in DNS TXT records and well-known documents. The protocol specification version (e.g., `0.1.2`) tracks the spec document; the config format version (e.g., `1.1`) tracks local storage schema. These version numbers are independent.
 
 ### Message Expiration
 
@@ -214,7 +216,7 @@ The `attachments` array is a field within the `payload` object:
 | `url` | string | Yes | Provider-signed download URL |
 | `scan_status` | enum | Yes | Security scan result: `pending` (upload in progress), `clean`, `suspicious`, or `rejected` |
 | `uploaded_at` | string | Yes | ISO 8601 timestamp of when the file was uploaded |
-| `expires_at` | string | Yes | ISO 8601 expiration timestamp (set by the agent, typically 7 days from upload; providers MUST NOT modify this field after routing — see [Attachment Signing Flow](#attachment-signing-flow)) |
+| `expires_at` | string | Yes | ISO 8601 expiration timestamp (set by the agent, MUST be at least 7 days from upload time to ensure relay queue compatibility; providers MUST NOT modify this field after routing — see [Attachment Signing Flow](#attachment-signing-flow)) |
 
 ### Attachment Rules
 
@@ -226,6 +228,7 @@ The `attachments` array is a field within the `payload` object:
 - Filenames MUST NOT contain path separators (`/`, `\`), null bytes, or control characters. Providers MUST sanitize filenames by stripping or replacing characters not in the set `[a-zA-Z0-9._-]`. Filenames MUST NOT match reserved OS names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`-`COM9`, `LPT1`-`LPT9` on Windows). Leading and trailing dots and spaces MUST be stripped. Double-encoded path separators (e.g., `%2F`) MUST be rejected.
 - Attachment IDs follow the format `att_<unix_timestamp>_<random_hex>`. Agents and providers MUST validate attachment IDs against path traversal (reject IDs containing `/`, `\`, `..`, or null bytes) before using them in filesystem paths.
 - Each attachment ID MUST be referenced by at most one message. Providers MUST reject a `/route` request that references an attachment ID already associated with a previously routed message. Retrying the same `/route` request (same message, same attachments) after a transient failure does not count as reuse.
+- Agents MAY include an `idempotency_key` field in the route request to enable safe retries. Providers receiving a route request with the same `idempotency_key` MUST treat it as a retry of the original request and return the same response without consuming attachment references again.
 - The 7-day attachment TTL starts when the message is **routed**, not when the file is uploaded. The `expires_at` value in the payload is set by the sending agent at upload time and MUST NOT be modified by providers after routing (modifying payload fields would invalidate the message signature).
 - Providers MUST delete uploaded attachments that are not referenced by a routed message within **2 hours** of upload confirmation. This prevents orphaned files from consuming storage indefinitely while allowing sufficient time for multi-attachment upload workflows.
 
@@ -241,7 +244,7 @@ The `attachments` array is a field within the `payload` object:
     "subject": "Server logs from last night",
     "priority": "high",
     "timestamp": "2025-01-30T10:00:00Z",
-    "expires_at": "2025-01-31T10:00:00Z",
+    "expires_at": "2025-02-06T10:00:00Z",
     "signature": "base64_encoded_signature",
     "in_reply_to": null,
     "thread_id": "msg_1706648400_def456"
@@ -289,6 +292,8 @@ All messages MUST be signed by the **sending agent** (not the provider). Signing
 
 > **Version 1.1 Update:** The signature format was changed from full canonical JSON to selective field signing. This allows clients to sign messages before the server adds metadata (id, timestamp) and enables signatures to survive federation hops unchanged.
 
+Providers MUST generate `envelope.id` and `envelope.timestamp` at message acceptance time. Clients MUST NOT include these fields in route requests; if present, providers MUST overwrite them.
+
 The canonical string for signing is:
 
 ```
@@ -302,6 +307,8 @@ Where:
 - `{priority}` - Priority level (`low`, `normal`, `high`, `urgent`)
 - `{in_reply_to}` - Message ID being replied to, or empty string if not a reply
 - `{payload_hash}` - Base64(SHA256(JSON.stringify(payload)))
+
+> **Note:** `thread_id` is intentionally NOT included in the signing canonical string. Recipients SHOULD derive thread grouping from `in_reply_to` chains rather than trusting `thread_id` from the wire, as it can be modified by intermediaries without invalidating the signature.
 
 **Example:**
 ```
@@ -325,7 +332,8 @@ from base64 import b64encode
 
 def sign_message(from_addr, to_addr, subject, priority, in_reply_to, payload, private_key, algorithm="Ed25519"):
     # 1. Calculate payload hash
-    payload_json = json.dumps(payload, separators=(',', ':'))
+    # Keys MUST be sorted lexicographically at all nesting levels
+    payload_json = json.dumps(payload, separators=(',', ':'), sort_keys=True)
     payload_hash = b64encode(hashlib.sha256(payload_json.encode()).digest()).decode()
 
     # 2. Build canonical string
@@ -344,6 +352,10 @@ def sign_message(from_addr, to_addr, subject, priority, in_reply_to, payload, pr
     # 4. Encode
     return b64encode(signature).decode()
 ```
+
+Implementations MUST serialize payload JSON with keys sorted lexicographically at all nesting levels before hashing (equivalent to `sort_keys=True` in Python's `json.dumps`).
+
+> **Implementation Note:** Tools such as `jq -c` append a trailing newline to output. Implementations MUST strip all trailing whitespace and newline characters from the serialized payload string before hashing.
 
 **Bash/OpenSSL Example:**
 ```bash
@@ -377,7 +389,8 @@ def verify_message(envelope, payload, sender_public_key, algorithm="Ed25519"):
     signature = b64decode(envelope["signature"])
 
     # 2. Calculate payload hash
-    payload_json = json.dumps(payload, separators=(',', ':'))
+    # Keys MUST be sorted lexicographically at all nesting levels
+    payload_json = json.dumps(payload, separators=(',', ':'), sort_keys=True)
     payload_hash = b64encode(hashlib.sha256(payload_json.encode()).digest()).decode()
 
     # 3. Recreate canonical string
@@ -449,17 +462,19 @@ Messages are stored locally on the agent's machine:
     │   └── <recipient>/
     │       └── msg_<id>.json
     └── attachments/
-        └── <msg_id>/
-            └── <att_id>_<filename>
+        └── <att_id>/
+            └── <filename>
 ```
 
 When downloading attachments, agents MUST verify that `SHA256(downloaded_bytes)` matches the `digest` field in the attachment metadata before processing the file content.
 
-Agents SHOULD restrict attachment directories to permissions `0700` (owner only). Agents SHOULD periodically clean up downloaded attachments whose parent message `expires_at` has passed or whose parent message has been deleted.
+Agents SHOULD restrict attachment directories to permissions `0700` (owner only). Agents MUST clean up downloaded attachments when the parent message is deleted. Agents SHOULD also periodically remove downloaded attachments whose parent message `expires_at` has passed. Cleanup may be triggered on message deletion, on inbox list, or via a scheduled background task. Providers need not be notified of client-side attachment deletion.
 
 ### Digest Algorithm
 
 The `digest` field uses a prefixed format: `<algorithm>:<hex>`. The current protocol version requires `sha256`. Future versions MAY add `sha384` or `sha512` prefixes. Implementations MUST reject digest values with unrecognized algorithm prefixes rather than silently ignoring the prefix.
+
+> **Rationale:** The `sha256:<hex>` format follows the Docker/OCI content-addressable storage convention. This differs from W3C Subresource Integrity (`sha256-<base64>`) and the IETF `Digest` HTTP header (`SHA-256=<base64>`) which use base64 encoding. Hex encoding was chosen for consistency with Docker registries and for easier debugging (hex digests are more readable in logs).
 
 ### Stored Message Format
 
