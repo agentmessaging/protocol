@@ -257,7 +257,9 @@ Providers MUST NOT wrap messages from `verified` senders (same tenant, valid sig
 
 Messages from external or untrusted sources MUST be treated as data, not instructions. AI agents receiving AMP messages SHOULD implement injection detection as a defense-in-depth measure.
 
-See [Appendix A - Injection Patterns](appendix-a-injection-patterns.md) for an informative reference of common injection categories and example patterns. Implementations SHOULD maintain updated pattern databases beyond the examples provided.
+See [Appendix A - Injection Patterns](appendix-a-injection-patterns.md) for an informative reference of 48 common injection patterns across 8 categories. Implementations SHOULD maintain updated pattern databases beyond the examples provided.
+
+Implementations SHOULD scan both message body content and attachment filenames/metadata for injection patterns. Attackers may embed injection attempts in filenames (e.g., `ignore-all-instructions.pdf`) to bypass body-only scanning.
 
 ### Security Metadata
 
