@@ -51,6 +51,7 @@ Every message has two parts:
 | `signature` | string | Yes | Base64-encoded signature |
 | `in_reply_to` | string | No | Message ID this replies to |
 | `thread_id` | string | Yes | ID of first message in thread |
+| `idempotency_key` | string | No | Client-generated deduplication key (see [Idempotency](#idempotency)) |
 
 ### Protocol Version
 
@@ -501,6 +502,47 @@ The `digest` field uses a prefixed format: `<algorithm>:<hex>`. The current prot
 | `unread` | Not yet read by agent |
 | `read` | Read by agent |
 | `archived` | Archived (hidden from default view) |
+
+## Idempotency
+
+The optional `idempotency_key` field in the envelope enables end-to-end deduplication across federation hops and relay queues.
+
+### Format
+
+Keys SHOULD be UUID v4 strings prefixed with `idk_`:
+
+```
+idk_550e8400-e29b-41d4-a716-446655440000
+```
+
+### Behavior
+
+- Senders SHOULD include an `idempotency_key` on every message. Senders MUST include an `idempotency_key` when retrying a failed send.
+- Providers MUST store idempotency keys for at least 24 hours. Providers SHOULD store keys for at least 7 days (matching relay queue TTL).
+- When a provider receives a message with an `idempotency_key` it has already seen, it MUST return the original response without re-routing the message.
+- When forwarding messages via federation, providers MUST preserve the `idempotency_key` in the envelope. The receiving provider MUST respect the key for deduplication on its side.
+- The `idempotency_key` is NOT included in the signing canonical string (same rationale as `id` and `timestamp` — it is routing metadata, not message content).
+
+> **Migration Note:** The `idempotency_key` was previously only available as a field in the `/v1/route` request body (see [08 - API](08-api.md)). Moving it to the envelope ensures it travels with the message through federation and relay. Providers receiving a route request with `idempotency_key` at the top level SHOULD copy it into the envelope. If `idempotency_key` appears in both the route request body and the envelope, the envelope value takes precedence.
+
+## JSON Profile
+
+AMP messages MUST conform to the following JSON constraints. These rules improve interoperability between implementations and ensure deterministic payload hashing for signatures.
+
+### Rules
+
+1. **No `null` values in payload fields.** Omit the field instead of setting it to `null`. Envelope fields that are optional (e.g., `in_reply_to`, `expires_at`) SHOULD be omitted rather than set to `null`.
+2. **No duplicate object keys.** If a JSON object contains duplicate keys, the behavior is undefined per RFC 8259. AMP implementations MUST reject messages with duplicate keys in any object within the envelope or payload.
+3. **Top-level payload must be an object.** The `payload` field MUST be a JSON object (`{}`), not an array or primitive.
+4. **Numeric values must be finite.** JSON numbers MUST NOT be `NaN`, `Infinity`, or `-Infinity`. Integer values SHOULD be used where the field semantics are integral (e.g., `size`, port numbers).
+
+### Rationale
+
+- **Omission over `null`**: Reduces ambiguity (`null` vs absent vs empty string are three distinct states in many languages; AMP collapses `null` and absent into one).
+- **No duplicate keys**: Ensures `JSON.parse` produces the same result across all implementations, which is critical for payload hash computation.
+- **Finite numbers**: Prevents non-standard JSON extensions from producing unparseable messages.
+
+> **Note:** These constraints apply to the wire format (the JSON as transmitted). Implementations MAY use `null` internally for representing absent optional fields, but MUST strip `null` values before serialization.
 
 ## Size Limits
 

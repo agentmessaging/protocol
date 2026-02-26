@@ -508,6 +508,36 @@ Providers SHOULD include attachment scan results in the `local.security` metadat
 
 > **Design Note:** When end-to-end encryption (E2E) is introduced in v2, the `payload` will be encrypted and opaque to providers. Since `attachments` lives inside the payload, providers will not be able to read attachment metadata or verify `scan_status` before routing. A future version of the protocol will need to address this — likely by moving attachment metadata to the envelope or by introducing a separate encrypted-attachment negotiation flow. Implementers should be aware of this forward-compatibility consideration.
 
+## Identity Conflict Detection
+
+Agents MUST track the public key (or fingerprint) associated with each address they communicate with. This enables detection of key-swap attacks where an attacker compromises a provider or registration to associate a different key with an existing address.
+
+### Requirements
+
+- Agents MUST maintain a local key cache mapping addresses to their last-known public key fingerprint (e.g., in a `known_keys.json` file or equivalent store).
+- When an agent resolves an address (via `/v1/agents/resolve` or federation), if the returned public key fingerprint differs from the cached fingerprint for that address, the agent MUST mark the address as **conflicted**.
+- Agents MUST NOT send messages to or process messages from a conflicted address until the conflict is resolved.
+- Agents SHOULD alert the human operator or orchestrator when a conflict is detected.
+
+### Resolution
+
+A conflicted address can be resolved by:
+
+1. **Human confirmation** — The operator verifies the key change was intentional (e.g., the remote agent rotated keys).
+2. **Signed rotation proof** — If the remote agent's provider supports key rotation with proof (see [08 - API](08-api.md#rotate-keypair)), the old key signs the new key, providing cryptographic continuity.
+
+Once resolved, agents MUST update the cached fingerprint.
+
+### Error Code
+
+| Code | HTTP Status | Description |
+|------|-------------|-------------|
+| `key_conflict` | 409 | Known address has a different public key than previously cached |
+
+### First Contact
+
+When an agent communicates with an address for the first time (no cached key), the resolved key is cached without conflict. This is equivalent to Trust On First Use (TOFU). Agents MAY support an explicit verification step where the operator confirms the key out-of-band before trusting it.
+
 ## Replay Protection
 
 ### Requirements

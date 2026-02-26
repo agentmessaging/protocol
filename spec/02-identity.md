@@ -298,6 +298,98 @@ Implementations encountering the legacy `identity.json` format SHOULD:
 2. Preserve existing keys and registrations
 3. Update file paths in configuration
 
+## Agent Card (Portable Identity)
+
+An Agent Card is a signed, portable identity document that allows agents to verify each other's identity without contacting a provider. Agent Cards can be exported, shared out-of-band (e.g., pasted in a config file, exchanged via another channel), and verified offline.
+
+### Agent Card Format
+
+```json
+{
+  "amp_agent_card": "1.0",
+  "address": "backend-architect@23blocks.crabmail.ai",
+  "alias": "Backend Architect",
+  "public_key": "-----BEGIN PUBLIC KEY-----\n...",
+  "key_algorithm": "Ed25519",
+  "fingerprint": "SHA256:xK4f...2jQ=",
+  "provider_endpoint": "https://api.crabmail.ai/v1",
+  "capabilities": ["attachments", "threading", "priority"],
+  "issued_at": "2026-02-25T10:00:00Z",
+  "expires_at": "2026-08-25T10:00:00Z",
+  "signature": "base64_encoded_signature"
+}
+```
+
+### Agent Card Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `amp_agent_card` | string | Yes | Card format version (`"1.0"`) |
+| `address` | string | Yes | Agent's full AMP address |
+| `alias` | string | No | Human-readable name |
+| `public_key` | string | Yes | PEM-encoded public key |
+| `key_algorithm` | string | Yes | Key algorithm (e.g., `"Ed25519"`) |
+| `fingerprint` | string | Yes | Key fingerprint (`SHA256:<base64>`) |
+| `provider_endpoint` | string | No | Provider API base URL |
+| `capabilities` | array | No | Agent capabilities (see [08 - API](08-api.md#resolve-agent-address)) |
+| `issued_at` | string | Yes | ISO 8601 timestamp of card creation |
+| `expires_at` | string | Yes | ISO 8601 expiration (SHOULD be no more than 6 months from `issued_at`) |
+| `signature` | string | Yes | Base64-encoded Ed25519 signature of the canonical card |
+
+### Signing an Agent Card
+
+The canonical string for card signing is computed using JSON Canonicalization Scheme ([RFC 8785](https://datatracker.ietf.org/doc/html/rfc8785)):
+
+1. Construct the card JSON object with all fields **except** `signature`.
+2. Serialize using JCS (RFC 8785) — deterministic key ordering, no insignificant whitespace, normalized Unicode.
+3. Prepend the domain separator: `"amp-agent-card-v1\n"`.
+4. Sign the resulting bytes with the agent's Ed25519 private key.
+5. Base64-encode the signature and add it to the card as the `signature` field.
+
+```python
+import json
+import base64
+
+def sign_agent_card(card_fields, private_key):
+    # 1. JCS canonicalize (RFC 8785) — all fields except signature
+    canonical_json = jcs_canonicalize(card_fields)
+
+    # 2. Prepend domain separator
+    sign_input = b"amp-agent-card-v1\n" + canonical_json
+
+    # 3. Sign with Ed25519
+    signature = private_key.sign(sign_input)
+
+    # 4. Add signature to card
+    card_fields["signature"] = base64.b64encode(signature).decode()
+    return card_fields
+```
+
+> **Why JCS?** JSON Canonicalization Scheme (RFC 8785) is an IETF standard for deterministic JSON serialization. Unlike AMP's existing `sort_keys=True` approach for payload hashing (which is sufficient for single-implementation use), JCS handles edge cases like Unicode normalization and number formatting that matter when cards are verified across different languages and platforms.
+
+### Verifying an Agent Card
+
+1. Extract the `signature` field and remove it from the card object.
+2. Serialize the remaining fields using JCS (RFC 8785).
+3. Prepend `"amp-agent-card-v1\n"`.
+4. Verify the signature against the `public_key` in the card.
+5. Verify that `expires_at` is in the future.
+6. Verify that the `fingerprint` matches the `public_key`.
+
+If any step fails, the card MUST be rejected.
+
+### Agent Card Export and Import
+
+- `GET /v1/agents/me/card` — Returns the current agent's signed Agent Card. Providers MUST generate the card on demand using the agent's registered public key and address.
+- Agents MAY also generate cards locally using their private key, without involving the provider.
+- When importing a card, agents MUST verify the signature and expiration before caching the address-to-key mapping.
+
+### Relationship to Provider Resolution
+
+Agent Cards complement, but do not replace, the `/v1/agents/resolve` endpoint. The resolve endpoint provides real-time status (online/offline) and is authoritative for the provider. Agent Cards enable offline verification and out-of-band key exchange — useful for initial contact, air-gapped environments, or when the provider is temporarily unavailable.
+
+When both an Agent Card and a resolve response are available for the same address, and the keys differ, agents MUST follow the Identity Conflict Detection procedure (see [07 - Security](07-security.md#identity-conflict-detection)).
+
 ## Public Key Registration
 
 Each agent MUST have a cryptographic keypair:

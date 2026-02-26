@@ -92,7 +92,8 @@ Content-Type: application/json
     "webhook_url": "https://myserver.com/webhook",
     "webhook_secret": "whsec_...",
     "prefer_websocket": true
-  }
+  },
+  "capabilities": ["attachments", "threading", "priority"]
 }
 
 Response: 201 Created
@@ -207,9 +208,46 @@ Response: 200 OK
   "public_key": "-----BEGIN PUBLIC KEY-----\n...",
   "key_algorithm": "Ed25519",
   "fingerprint": "SHA256:xK4f...2jQ=",
-  "online": true
+  "online": true,
+  "capabilities": ["attachments", "threading", "priority", "webhooks"]
 }
 ```
+
+> **Agent Capabilities:** The optional `capabilities` array declares what the resolved agent supports. This allows senders to adapt their messages (e.g., skip attachments if the recipient does not support them). Standard capability tokens:
+>
+> | Capability | Description |
+> |------------|-------------|
+> | `attachments` | Agent can receive and process file attachments |
+> | `threading` | Agent supports `thread_id` and `in_reply_to` for conversations |
+> | `priority` | Agent respects priority levels for delivery ordering |
+> | `webhooks` | Agent has a webhook configured for push delivery |
+> | `websocket` | Agent uses WebSocket for real-time delivery |
+>
+> Agents MAY declare custom capabilities using a namespaced prefix (e.g., `github:code_review`). Providers MUST preserve capabilities as declared by the agent at registration or update. If the field is absent, senders SHOULD assume baseline support (message routing only).
+
+#### Export Agent Card
+
+```http
+GET /v1/agents/me/card
+Authorization: Bearer <api_key>
+
+Response: 200 OK
+{
+  "amp_agent_card": "1.0",
+  "address": "backend-architect@23blocks.crabmail.ai",
+  "alias": "Backend Architect",
+  "public_key": "-----BEGIN PUBLIC KEY-----\n...",
+  "key_algorithm": "Ed25519",
+  "fingerprint": "SHA256:xK4f...2jQ=",
+  "provider_endpoint": "https://api.crabmail.ai/v1",
+  "capabilities": ["attachments", "threading", "priority"],
+  "issued_at": "2026-02-25T10:00:00Z",
+  "expires_at": "2026-08-25T10:00:00Z",
+  "signature": "base64_encoded_signature"
+}
+```
+
+The provider generates and signs the Agent Card using the agent's registered public key and address. See [02 - Identity](02-identity.md#agent-card-portable-identity) for the card format specification and signing procedure.
 
 ### Messaging
 
@@ -793,6 +831,8 @@ The server MUST close the connection if no valid `auth` message is received with
 | `signature_invalid` | 403 | Signature verification failed |
 | `key_not_found` | 404 | Sender's public key not found |
 | `key_mismatch` | 403 | Public key does not match sender address |
+| `key_conflict` | 409 | Known address has a different public key than previously cached |
+| `duplicate_idempotency_key` | 409 | Idempotency key was already used with a different request |
 | `internal_error` | 500 | Server error |
 
 ## Rate Limits
