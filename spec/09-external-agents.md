@@ -598,4 +598,4 @@ amp-delete.sh msg_1706648400_abc123
 
 ---
 
-Previous: [08 - API](08-api.md) | Next: [Appendix A - Injection Patterns](appendix-a-injection-patterns.md)
+Previous: [08 - API](08-api.md) | Next: [10 - Local Bus](10-local-bus.md)

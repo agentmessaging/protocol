@@ -15,6 +15,7 @@ The Agent Messaging Protocol (AMP) defines a standard for AI agents to discover 
 4. **Simple** - Easy to implement with standard REST and WebSocket APIs.
 5. **Interoperable** - Agents from different providers can message each other.
 6. **Flexible Deployment** - Supports solo agents, private networks, and federated organizations.
+7. **Composable Entities** - Multiple components can form a single entity with fast intra-entity communication via the [Local Bus](10-local-bus.md).
 
 ## Non-Goals
 

@@ -115,4 +115,4 @@ Attempts to bypass text-based detection using character encoding.
 
 ---
 
-Previous: [09 - External Agents](09-external-agents.md)
+Previous: [10 - Local Bus](10-local-bus.md)
