@@ -5,25 +5,28 @@
 
 ## Overview
 
-AMP defines **inter-entity** messaging — agents communicating across networks via providers. But when multiple components operate as a single entity (e.g., a "brain" composed of `cortex`, `cerebellum`, and `gateway` processes), they need fast, low-latency **intra-entity** communication that HTTP REST cannot provide.
+AMP defines **inter-entity** messaging — agents communicating across networks via providers. But when multiple components operate as a single entity (e.g., a "brain" composed of `cortex`, `cerebellum`, and `gateway` processes), they need fast, ordered **intra-entity** communication.
 
-The Local Bus is a lightweight JSON-RPC 2.0 transport over Unix Domain Sockets (UDS) that enables components within a single entity to communicate with sub-millisecond latency. A dedicated gateway component bridges the internal bus to the external AMP network, presenting a single AMP identity for the entire entity.
+The Local Bus is a filesystem-based mailbox system that enables components within a single entity to exchange messages through shared folders. Each component has its own mailbox directory, processes messages in order, and deletes them after handling. No central bus process is required — components operate autonomously using only file I/O.
+
+A dedicated gateway component bridges the internal bus to the external AMP network, presenting a single AMP identity for the entire entity.
 
 ### What Local Bus Is
 
 - A same-machine IPC mechanism for components of a single AMP entity
-- A star-topology bus using JSON-RPC 2.0 over Unix Domain Sockets
+- A filesystem-based mailbox system — write to send, watch to receive
+- Zero dependencies beyond file I/O — works with bash, Python, Node.js, or any language
 - A complement to AMP, not a replacement
 
 ### What Local Bus Is NOT
 
 - NOT a replacement for AMP inter-entity messaging
 - NOT a network protocol — it operates exclusively on a single machine
-- NOT a general-purpose message broker (no persistence, no durability guarantees)
+- NOT a real-time streaming system — polling-based with configurable intervals
 
 ## Architecture
 
-The Local Bus uses a **star topology** with a central bus process. All components connect to the bus via a shared Unix Domain Socket. The bus handles routing, discovery, and lifecycle management.
+The Local Bus uses a **mailbox-per-component** model. Each component owns a directory under `mailbox/`. To send a message, a component writes a JSON file to the recipient's mailbox directory. To receive, a component watches its own mailbox and processes files in order.
 
 ```
                          ┌─────────────────────────┐
@@ -41,80 +44,129 @@ The Local Bus uses a **star topology** with a central bus process. All component
 │     │           │       │           │       │ (AMP ↔ Bus)│      │
 │     └─────┬─────┘       └─────┬─────┘       └─────┬─────┘      │
 │           │                   │                     │            │
-│           │    UDS            │    UDS               │    UDS    │
+│     watches its          watches its           watches its      │
+│     own mailbox          own mailbox           own mailbox      │
 │           │                   │                     │            │
-│           └───────────┬───────┴─────────────────────┘            │
-│                       │                                          │
-│                ┌──────┴──────┐                                   │
-│                │  Bus Process │                                   │
-│                │  (Router)    │                                   │
-│                └─────────────┘                                   │
+│           ▼                   ▼                     ▼            │
+│   mailbox/cortex/    mailbox/cerebellum/    mailbox/gateway/    │
 │                                                                 │
-│  Socket: /tmp/amp-bus-brain/bus.sock                             │
+│  Bus dir: ~/.agent-messaging/bus/brain/                         │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Why Star Topology
+### Why Filesystem Mailboxes
 
-| Property | Star (chosen) | Mesh |
-|----------|---------------|------|
-| Routing complexity | O(1) — bus routes all | O(n) — every component routes |
-| Discovery | Centralized, deterministic | Distributed, eventually consistent |
-| New component joins | Connects to bus only | Must discover all peers |
-| Single point of failure | Bus process | None (but higher complexity) |
+| Property | Filesystem (chosen) | Unix Domain Sockets | TCP/HTTP |
+|----------|-------------------|-------------------|----------|
+| OS support | All (macOS, Linux, Windows) | macOS/Linux only | All |
+| Dependencies | None (file I/O only) | Socket libraries | HTTP libraries |
+| Crash recovery | Messages survive on disk | Messages lost in memory | Messages lost |
+| Ordering | Filename sort | Must implement in-memory | Must implement |
+| Central process | Not needed | Bus process required | Server required |
+| Debuggability | `ls` and `cat` | Requires tools | Requires tools |
+| AI agent can implement | Yes — basic file read/write | Needs socket programming | Needs HTTP stack |
+| Backpressure | Natural — files queue up | Must implement | Must implement |
 
-The star topology trades redundancy for simplicity. Since all components run on the same machine, the bus process can be supervised and restarted quickly by the OS or a process manager.
+## Directory Structure
 
-## Wire Protocol
+All Local Bus state lives under `~/.agent-messaging/bus/<entity>/`:
 
-### Transport
-
-- **Socket type:** Unix Domain Socket (stream mode, `SOCK_STREAM`)
-- **Framing:** Newline-delimited JSON — one JSON-RPC message per line (`\n` terminated)
-- **Encoding:** UTF-8
-- **Max message size:** 1 MB (configurable via `max_message_bytes` in bus config)
-
-### JSON-RPC 2.0
-
-All communication uses [JSON-RPC 2.0](https://www.jsonrpc.org/specification). Each message is a single JSON object on one line.
-
-**Request:**
-
-```json
-{"jsonrpc":"2.0","method":"bus.send","params":{"to":"cerebellum","payload":{"task":"analyze"}},"id":1}
+```
+~/.agent-messaging/bus/brain/
+├── bus.json                              # Bus configuration
+├── components/                           # Component registry
+│   ├── cortex.json                       # Registration + heartbeat
+│   ├── cerebellum.json
+│   └── gateway.json
+├── mailbox/                              # Per-component message queues
+│   ├── cortex/
+│   │   ├── 1706648400123_a1b2c3d4.json   # Message files (sorted = processing order)
+│   │   └── 1706648400456_e5f6a7b8.json
+│   ├── cerebellum/
+│   │   └── 1706648400789_c9d0e1f2.json
+│   └── gateway/
+└── topics/                               # Pub/sub subscriber lists
+    ├── sensor.updates.json
+    └── amp.inbound.json
 ```
 
-**Response:**
+### Directory Permissions
 
-```json
-{"jsonrpc":"2.0","result":{"status":"delivered"},"id":1}
+| Path | Permissions | Purpose |
+|------|-------------|---------|
+| `~/.agent-messaging/bus/<entity>/` | `0700` | Bus root — owner only |
+| `components/` | `0700` | Component registry |
+| `mailbox/` | `0700` | All mailboxes |
+| `mailbox/<component>/` | `0700` | Individual mailbox |
+| `topics/` | `0700` | Topic subscriber lists |
+
+All directories and files MUST be owned by the same OS user. This provides the trust boundary — if a process can write to the mailbox, it is part of the entity.
+
+## Message Format
+
+### Filename Convention
+
+```
+<unix_timestamp_ms>_<random_hex>.json
 ```
 
-**Notification (no `id`, no response expected):**
+- **`unix_timestamp_ms`**: Unix timestamp in milliseconds (e.g., `1706648400123`)
+- **`random_hex`**: 8 hex characters for collision avoidance (e.g., `a1b2c3d4`)
 
-```json
-{"jsonrpc":"2.0","method":"bus.notify","params":{"event":"tick","data":{"cycle":42}}}
+Sorting filenames lexicographically produces **chronological processing order**. This is the only ordering guarantee the Local Bus provides.
+
+Examples:
+
+```
+1706648400123_a1b2c3d4.json   ← processed first
+1706648400456_e5f6a7b8.json   ← processed second
+1706648401001_c9d0e1f2.json   ← processed third
 ```
 
-**Error:**
+### Message Schema
+
+Every message file contains a single JSON object:
 
 ```json
-{"jsonrpc":"2.0","error":{"code":-32001,"message":"component_not_found","data":{"name":"unknown"}},"id":1}
+{
+  "id": "bus_1706648400123_a1b2c3d4",
+  "from": "cortex",
+  "method": "bus.send",
+  "payload": {
+    "type": "task",
+    "action": "analyze_pattern",
+    "data": {"input": "sensor readings..."}
+  },
+  "timestamp": "2025-01-30T10:05:31.123Z",
+  "topic": null
+}
 ```
 
-### Error Codes
+| Field | Required | Description |
+|-------|----------|-------------|
+| `id` | Yes | Unique message ID: `bus_<timestamp_ms>_<random_hex>` |
+| `from` | Yes | Sender component name |
+| `method` | Yes | Operation type (see [Operations](#operations)) |
+| `payload` | Yes | Arbitrary JSON content |
+| `timestamp` | Yes | ISO 8601 timestamp with milliseconds |
+| `topic` | No | Topic name if this is a pub/sub message, `null` otherwise |
 
-Standard JSON-RPC 2.0 error codes apply. Additional bus-specific codes:
+### Atomic Writes
 
-| Code | Name | Description |
-|------|------|-------------|
-| -32001 | `component_not_found` | Target component is not registered |
-| -32002 | `already_registered` | Component name is already taken |
-| -32003 | `not_registered` | Caller has not registered with the bus |
-| -32004 | `topic_not_found` | Subscription topic does not exist |
-| -32005 | `bus_full` | Bus has reached max component capacity |
-| -32006 | `message_too_large` | Message exceeds `max_message_bytes` |
-| -32007 | `rate_limited` | Component is sending too fast |
+To prevent partial reads, messages MUST be written atomically:
+
+1. Write the JSON to a temporary file in the same directory (e.g., `.tmp_<random>.json`)
+2. Rename (move) the temporary file to the final filename
+
+Rename is atomic on all POSIX systems and on Windows (NTFS). This guarantees that a reader never sees a half-written file.
+
+```bash
+# Example: atomic write in bash
+tmp_file="mailbox/cerebellum/.tmp_$$_$(openssl rand -hex 4).json"
+final_file="mailbox/cerebellum/1706648400123_a1b2c3d4.json"
+echo '{"id":"bus_1706648400123_a1b2c3d4",...}' > "$tmp_file"
+mv "$tmp_file" "$final_file"
+```
 
 ## Component Model
 
@@ -129,11 +181,33 @@ Each component has a unique **name** within the entity. Names are simple identif
 | Unique within the entity | No two components share a name |
 | No dots or `@` signs | Prevents confusion with AMP addresses |
 
-The bus process itself is implicitly addressed as `bus`.
+### Component Registration File
+
+Each component creates a JSON file at `components/<name>.json` when it joins the bus:
+
+```json
+{
+  "name": "cortex",
+  "role": "coordinator",
+  "capabilities": ["reasoning", "planning", "delegation"],
+  "version": "1.0.0",
+  "pid": 12345,
+  "registered_at": "2025-01-30T10:00:00Z",
+  "last_seen": "2025-01-30T10:05:30Z"
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Component name (matches filename) |
+| `role` | No | One of: `worker` (default), `gateway`, `coordinator`, `monitor` |
+| `capabilities` | No | Array of free-form capability strings |
+| `version` | No | Component version string |
+| `pid` | Yes | OS process ID (for liveness checks) |
+| `registered_at` | Yes | When the component registered |
+| `last_seen` | Yes | Updated on each heartbeat cycle |
 
 ### Roles
-
-Components declare a role during registration:
 
 | Role | Description |
 |------|-------------|
@@ -142,408 +216,149 @@ Components declare a role during registration:
 | `coordinator` | Orchestrates other components |
 | `monitor` | Observes bus traffic for logging/metrics |
 
-Roles are informational — the bus does not enforce role-based access control. The exception is `gateway`: only one component per entity SHOULD register with the `gateway` role.
+Roles are informational. The exception is `gateway`: only one component per entity SHOULD register with the `gateway` role.
 
-### Capabilities
+### Discovery
 
-Components declare capabilities during registration to advertise what they can do:
+To discover other components, read the `components/` directory:
 
-```json
-{
-  "name": "cortex",
-  "role": "coordinator",
-  "capabilities": ["reasoning", "planning", "delegation"]
-}
+```bash
+# List all components
+ls ~/.agent-messaging/bus/brain/components/
+
+# Find components with a specific capability
+cat ~/.agent-messaging/bus/brain/components/*.json | \
+  jq 'select(.capabilities[] == "reasoning") | .name'
 ```
 
-Capabilities are free-form strings. They are discoverable via `bus.discover` so components can find peers by capability rather than by name.
+A component is considered **alive** if:
+1. Its `components/<name>.json` file exists, AND
+2. Its `last_seen` timestamp is within the heartbeat timeout (default: 30s), OR
+3. Its `pid` corresponds to a running process (`kill -0 <pid>`)
 
-## Bus Methods
+## Operations
 
-### `bus.register`
+### Send (Point-to-Point)
 
-Register a component with the bus. MUST be the first message sent after connecting.
+To send a message to a specific component, write a JSON file to the recipient's mailbox:
 
-**Request:**
-
-```json
+```bash
+# cortex sends to cerebellum
+cat > "mailbox/cerebellum/1706648400123_a1b2c3d4.json" <<'EOF'
 {
-  "jsonrpc": "2.0",
-  "method": "bus.register",
-  "params": {
-    "name": "cortex",
-    "role": "coordinator",
-    "capabilities": ["reasoning", "planning"],
-    "version": "1.0.0"
-  },
-  "id": 1
-}
-```
-
-| Param | Required | Description |
-|-------|----------|-------------|
-| `name` | Yes | Unique component name |
-| `role` | No | Component role (default: `worker`) |
-| `capabilities` | No | Array of capability strings |
-| `version` | No | Component version string |
-
-**Response:**
-
-```json
-{
-  "jsonrpc": "2.0",
-  "result": {
-    "status": "registered",
-    "heartbeat_interval_ms": 10000,
-    "heartbeat_timeout_ms": 30000
-  },
-  "id": 1
-}
-```
-
-**Errors:** `-32002` (already registered), `-32005` (bus full)
-
-### `bus.deregister`
-
-Gracefully remove a component from the bus.
-
-**Request:**
-
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "bus.deregister",
-  "params": {},
-  "id": 2
-}
-```
-
-**Response:**
-
-```json
-{
-  "jsonrpc": "2.0",
-  "result": {
-    "status": "deregistered"
-  },
-  "id": 2
-}
-```
-
-The bus MUST notify other components via a `bus.notify` event with `"event": "component.left"`.
-
-### `bus.heartbeat`
-
-Liveness check. Components MUST send heartbeats at the interval specified during registration.
-
-**Request:**
-
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "bus.heartbeat",
-  "params": {},
-  "id": 3
-}
-```
-
-**Response:**
-
-```json
-{
-  "jsonrpc": "2.0",
-  "result": {
-    "status": "ok",
-    "uptime_ms": 123456
-  },
-  "id": 3
-}
-```
-
-If a component misses heartbeats for `heartbeat_timeout_ms` (default: 30000ms), the bus MUST treat it as disconnected and deregister it.
-
-### `bus.discover`
-
-List all connected components, optionally filtered by role or capability.
-
-**Request:**
-
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "bus.discover",
-  "params": {
-    "role": "worker",
-    "capability": "reasoning"
-  },
-  "id": 4
-}
-```
-
-| Param | Required | Description |
-|-------|----------|-------------|
-| `role` | No | Filter by role |
-| `capability` | No | Filter by capability |
-
-**Response:**
-
-```json
-{
-  "jsonrpc": "2.0",
-  "result": {
-    "components": [
-      {
-        "name": "cortex",
-        "role": "coordinator",
-        "capabilities": ["reasoning", "planning"],
-        "version": "1.0.0",
-        "connected_at": "2025-01-30T10:00:00Z",
-        "last_heartbeat": "2025-01-30T10:05:30Z"
-      }
-    ]
-  },
-  "id": 4
-}
-```
-
-### `bus.send`
-
-Send a point-to-point message to a specific component.
-
-**Request:**
-
-```json
-{
-  "jsonrpc": "2.0",
+  "id": "bus_1706648400123_a1b2c3d4",
+  "from": "cortex",
   "method": "bus.send",
-  "params": {
-    "to": "cerebellum",
-    "payload": {
-      "type": "task",
-      "action": "analyze_pattern",
-      "data": {"input": "sensor readings..."}
-    }
+  "payload": {
+    "type": "task",
+    "action": "analyze_pattern",
+    "data": {"input": "sensor readings..."}
   },
-  "id": 5
+  "timestamp": "2025-01-30T10:05:31.123Z",
+  "topic": null
 }
+EOF
 ```
 
-| Param | Required | Description |
-|-------|----------|-------------|
-| `to` | Yes | Target component name |
-| `payload` | Yes | Arbitrary JSON payload |
+The sender MUST use atomic writes (write to temp file, then rename).
 
-**Response:**
+If the recipient's mailbox directory does not exist, the message is **undeliverable**. The sender SHOULD check that `mailbox/<target>/` exists before writing. If it does not exist, the component is not registered.
+
+### Receive (Processing Loop)
+
+Each component runs a processing loop on its own mailbox:
+
+1. List all `.json` files in `mailbox/<self>/`, sorted by filename (ascending)
+2. Read the oldest file
+3. Process the message
+4. Delete the file
+5. Repeat
+
+```bash
+# cerebellum processing loop
+while true; do
+  for msg_file in $(ls mailbox/cerebellum/*.json 2>/dev/null | sort); do
+    # Process
+    payload=$(jq '.payload' "$msg_file")
+    handle_message "$payload"
+    # ACK by deleting
+    rm "$msg_file"
+  done
+  sleep 0.1  # poll interval
+done
+```
+
+**Processing guarantees:**
+
+- Messages are processed in **filename order** (chronological)
+- A message is processed **at most once** (deleted after handling)
+- If a component crashes mid-processing, the current message file may still exist. On restart, the component re-processes it (at-least-once for that message). Implementations MAY track processed message IDs to achieve exactly-once semantics.
+
+### Broadcast
+
+To broadcast to all components, write the message to every component's mailbox (except your own):
+
+```bash
+# cortex broadcasts to all
+for dir in mailbox/*/; do
+  component=$(basename "$dir")
+  [ "$component" = "cortex" ] && continue  # skip self
+  cp_atomic "$message_file" "$dir/$(timestamp_filename)"
+done
+```
+
+### Heartbeat
+
+Components update their `last_seen` timestamp in `components/<name>.json` at a regular interval (default: every 10 seconds):
+
+```bash
+# Update heartbeat
+jq '.last_seen = now | todate' components/cortex.json > components/.tmp_cortex.json
+mv components/.tmp_cortex.json components/cortex.json
+```
+
+A component MAY check other components' `last_seen` timestamps to detect failures. A component whose `last_seen` exceeds the heartbeat timeout (default: 30s) SHOULD be considered dead. Its mailbox directory is preserved (messages persist), and a replacement component can re-register with the same name to resume processing.
+
+### Pub/Sub
+
+#### Subscribe
+
+Add your component name to the topic's subscriber list at `topics/<topic>.json`:
 
 ```json
 {
-  "jsonrpc": "2.0",
-  "result": {
-    "status": "delivered"
-  },
-  "id": 5
+  "topic": "sensor.updates",
+  "subscribers": ["cortex", "cerebellum"],
+  "created_at": "2025-01-30T10:00:00Z"
 }
 ```
 
-The recipient receives the message as a JSON-RPC notification:
+If the topic file doesn't exist, create it. Use atomic writes and file locking when updating the subscriber list to avoid concurrent modification.
+
+#### Publish
+
+Read the subscriber list and write the message to each subscriber's mailbox with the `topic` field set:
 
 ```json
 {
-  "jsonrpc": "2.0",
-  "method": "bus.message",
-  "params": {
-    "from": "cortex",
-    "payload": {
-      "type": "task",
-      "action": "analyze_pattern",
-      "data": {"input": "sensor readings..."}
-    },
-    "timestamp": "2025-01-30T10:05:31Z"
-  }
-}
-```
-
-**Errors:** `-32001` (component not found), `-32006` (message too large)
-
-### `bus.broadcast`
-
-Send a message to all connected components (except the sender).
-
-**Request:**
-
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "bus.broadcast",
-  "params": {
-    "payload": {
-      "type": "announcement",
-      "message": "shutting down in 10 seconds"
-    }
-  },
-  "id": 6
-}
-```
-
-**Response:**
-
-```json
-{
-  "jsonrpc": "2.0",
-  "result": {
-    "delivered_to": ["cerebellum", "gateway", "memory"],
-    "count": 3
-  },
-  "id": 6
-}
-```
-
-### `bus.subscribe`
-
-Subscribe to a named topic for pub/sub messaging.
-
-**Request:**
-
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "bus.subscribe",
-  "params": {
-    "topic": "sensor.updates"
-  },
-  "id": 7
-}
-```
-
-**Response:**
-
-```json
-{
-  "jsonrpc": "2.0",
-  "result": {
-    "status": "subscribed",
-    "topic": "sensor.updates"
-  },
-  "id": 7
-}
-```
-
-Topics are created on first subscription and removed when the last subscriber leaves.
-
-### `bus.unsubscribe`
-
-Unsubscribe from a topic.
-
-**Request:**
-
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "bus.unsubscribe",
-  "params": {
-    "topic": "sensor.updates"
-  },
-  "id": 8
-}
-```
-
-**Response:**
-
-```json
-{
-  "jsonrpc": "2.0",
-  "result": {
-    "status": "unsubscribed",
-    "topic": "sensor.updates"
-  },
-  "id": 8
-}
-```
-
-**Errors:** `-32004` (topic not found / not subscribed)
-
-### `bus.publish`
-
-Publish a message to all subscribers of a topic.
-
-**Request:**
-
-```json
-{
-  "jsonrpc": "2.0",
+  "id": "bus_1706648400789_f1e2d3c4",
+  "from": "sensor",
   "method": "bus.publish",
-  "params": {
-    "topic": "sensor.updates",
-    "payload": {
-      "sensor": "temperature",
-      "value": 72.5,
-      "unit": "F"
-    }
+  "payload": {
+    "sensor": "temperature",
+    "value": 72.5,
+    "unit": "F"
   },
-  "id": 9
+  "timestamp": "2025-01-30T10:05:32.789Z",
+  "topic": "sensor.updates"
 }
 ```
 
-**Response:**
+The publisher fans out the message: one file is written to each subscriber's mailbox. Subscribers process topic messages the same way as point-to-point messages — they arrive in the same mailbox and are ordered by filename.
 
-```json
-{
-  "jsonrpc": "2.0",
-  "result": {
-    "topic": "sensor.updates",
-    "delivered_to": 3
-  },
-  "id": 9
-}
-```
+#### Unsubscribe
 
-Subscribers receive the message as a notification:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "bus.topic",
-  "params": {
-    "topic": "sensor.updates",
-    "from": "cortex",
-    "payload": {
-      "sensor": "temperature",
-      "value": 72.5,
-      "unit": "F"
-    },
-    "timestamp": "2025-01-30T10:05:32Z"
-  }
-}
-```
-
-### `bus.notify`
-
-Fire-and-forget notification. No response is expected. Used by the bus itself to announce lifecycle events and by components for one-way signals.
-
-**Bus lifecycle events:**
-
-| Event | When | Data |
-|-------|------|------|
-| `component.joined` | A component registers | `{"name": "cortex", "role": "coordinator"}` |
-| `component.left` | A component deregisters or times out | `{"name": "cortex", "reason": "deregistered"}` |
-| `bus.shutdown` | Bus is shutting down | `{"timeout_ms": 5000}` |
-
-**Example (bus → components):**
-
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "bus.notify",
-  "params": {
-    "event": "component.joined",
-    "data": {
-      "name": "cerebellum",
-      "role": "worker"
-    },
-    "timestamp": "2025-01-30T10:05:33Z"
-  }
-}
-```
+Remove your component name from `topics/<topic>.json`. If the subscriber list becomes empty, the topic file MAY be deleted.
 
 ## AMP Gateway
 
@@ -562,31 +377,26 @@ The **gateway** is a special component that bridges the internal Local Bus to th
 │                                              │
 │  Responsibilities:                           │
 │  - Send AMP messages on behalf of entity     │
-│  - Receive AMP messages and route to bus     │
+│  - Receive AMP messages, deliver to bus      │
 │  - Maintain provider connection (WS/polling) │
 │  - Manage AMP identity and registration      │
 └──────────────────────┬──────────────────────┘
                        │
-                       │  Local Bus (UDS)
+                       │  Filesystem (mailbox)
                        ▼
-                    Bus Process
+              mailbox/gateway/
 ```
 
-### Gateway Methods
+### Sending AMP Messages
 
-These methods are exposed by the gateway component on the bus. Other components call them to interact with the AMP network.
-
-#### `amp.send`
-
-Send an AMP message to an external agent.
-
-**Request:**
+Any component can send an AMP message by writing to the gateway's mailbox with `method: "amp.send"`:
 
 ```json
 {
-  "jsonrpc": "2.0",
+  "id": "bus_1706648400123_a1b2c3d4",
+  "from": "cortex",
   "method": "amp.send",
-  "params": {
+  "payload": {
     "to": "alice@acme.crabmail.ai",
     "subject": "Analysis complete",
     "priority": "normal",
@@ -596,198 +406,144 @@ Send an AMP message to an external agent.
       "context": {"task_id": "12345"}
     }
   },
-  "id": 10
+  "timestamp": "2025-01-30T10:05:31.123Z",
+  "topic": null
 }
 ```
 
-**Response:**
+The gateway processes this by:
+
+1. Reading the message from its mailbox
+2. Constructing an AMP envelope using the entity's identity
+3. Signing the message with the entity's Ed25519 private key
+4. Sending via the AMP provider's `/route` endpoint
+5. Optionally writing a confirmation back to the sender's mailbox
+
+### Receiving AMP Messages
+
+When the gateway receives an AMP message from the external network (via WebSocket, webhook, or polling), it publishes to the `amp.inbound` topic by writing to each subscriber's mailbox:
 
 ```json
 {
-  "jsonrpc": "2.0",
-  "result": {
-    "id": "msg_1706648400_abc123",
-    "status": "delivered",
-    "method": "websocket"
-  },
-  "id": 10
-}
-```
-
-#### `amp.inbox`
-
-Fetch the entity's AMP inbox.
-
-**Request:**
-
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "amp.inbox",
-  "params": {
-    "limit": 10,
-    "status": "unread"
-  },
-  "id": 11
-}
-```
-
-**Response:**
-
-```json
-{
-  "jsonrpc": "2.0",
-  "result": {
-    "messages": [
-      {
-        "id": "msg_1706648400_def456",
-        "from": "alice@acme.crabmail.ai",
-        "subject": "New task",
-        "priority": "high",
-        "timestamp": "2025-01-30T10:00:00Z"
-      }
-    ],
-    "count": 1
-  },
-  "id": 11
-}
-```
-
-#### `amp.identity`
-
-Get the entity's AMP identity.
-
-**Request:**
-
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "amp.identity",
-  "params": {},
-  "id": 12
-}
-```
-
-**Response:**
-
-```json
-{
-  "jsonrpc": "2.0",
-  "result": {
-    "address": "brain@acme.provider.ai",
-    "fingerprint": "SHA256:...",
-    "provider": "provider.ai",
-    "tenant": "acme"
-  },
-  "id": 12
-}
-```
-
-### Inbound Message Routing
-
-When the gateway receives an AMP message from the external network, it publishes it on the `amp.inbound` topic so any interested component can process it:
-
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "bus.topic",
-  "params": {
-    "topic": "amp.inbound",
-    "from": "gateway",
-    "payload": {
-      "id": "msg_1706648400_def456",
-      "envelope": {
-        "from": "alice@acme.crabmail.ai",
-        "to": "brain@acme.provider.ai",
-        "subject": "New task",
-        "priority": "high",
-        "timestamp": "2025-01-30T10:00:00Z",
-        "signature": "base64..."
-      },
-      "payload": {
-        "type": "request",
-        "message": "Please analyze these patterns."
-      },
-      "trust_level": "external"
+  "id": "bus_1706648400456_e5f6a7b8",
+  "from": "gateway",
+  "method": "amp.inbound",
+  "payload": {
+    "id": "msg_1706648400_def456",
+    "envelope": {
+      "from": "alice@acme.crabmail.ai",
+      "to": "brain@acme.provider.ai",
+      "subject": "New task",
+      "priority": "high",
+      "timestamp": "2025-01-30T10:00:00Z",
+      "signature": "base64..."
     },
-    "timestamp": "2025-01-30T10:00:01Z"
-  }
+    "payload": {
+      "type": "request",
+      "message": "Please analyze these patterns."
+    },
+    "trust_level": "external"
+  },
+  "timestamp": "2025-01-30T10:00:01.000Z",
+  "topic": "amp.inbound"
 }
 ```
 
 The gateway MUST apply the same content security rules as standard AMP (see [07 - Security](07-security.md)): external messages are wrapped in `<external-content>` tags and injection patterns are flagged.
 
+### Getting AMP Identity
+
+Components can read the entity's AMP identity directly from the AMP configuration:
+
+```bash
+cat ~/.agent-messaging/config.json | jq '{address, fingerprint, provider, tenant}'
+```
+
+Or write a `method: "amp.identity"` message to the gateway's mailbox and receive a response.
+
+### Standalone Mode (No Provider)
+
+The gateway is **optional**. An entity can operate without any AMP provider connection — components communicate entirely via the Local Bus. This is useful for:
+
+- Local development and testing
+- Air-gapped environments
+- Single-machine multi-agent systems that don't need external messaging
+
+When no gateway is registered, `amp.*` methods are simply not available.
+
 ## Lifecycle
 
-### Bus Startup
+### Initialization
 
-1. Bus process creates the socket directory (e.g., `/tmp/amp-bus-brain/`)
-2. Bus process creates the UDS at the configured path (e.g., `/tmp/amp-bus-brain/bus.sock`)
-3. Bus process sets directory permissions to `0700` (owner only)
-4. Bus process writes a PID file at `/tmp/amp-bus-brain/bus.pid`
-5. Bus begins accepting connections
+When the first component starts for an entity:
+
+1. Create the bus directory tree:
+   ```bash
+   mkdir -p ~/.agent-messaging/bus/brain/{components,mailbox,topics}
+   chmod 700 ~/.agent-messaging/bus/brain
+   ```
+2. Create `bus.json` if it doesn't exist (see [Configuration](#configuration))
+
+If the directories already exist (another component is running or previously ran), skip creation.
 
 ### Component Registration
 
-1. Component connects to the bus socket
-2. Component sends `bus.register` as its first message
-3. Bus validates the name is unique and responds with heartbeat parameters
-4. Bus broadcasts `component.joined` to all other components
-5. Component begins sending heartbeats at the specified interval
+1. Create `mailbox/<name>/` directory for your inbox
+2. Write `components/<name>.json` with role, capabilities, PID, and timestamps
+3. Begin heartbeat loop (update `last_seen` every 10s)
+4. Begin mailbox processing loop
 
-If a component sends any method other than `bus.register` before registering, the bus MUST respond with error `-32003` (not registered).
+```bash
+# Register "cortex"
+mkdir -p "mailbox/cortex"
+cat > "components/cortex.json" <<'EOF'
+{
+  "name": "cortex",
+  "role": "coordinator",
+  "capabilities": ["reasoning", "planning"],
+  "version": "1.0.0",
+  "pid": 12345,
+  "registered_at": "2025-01-30T10:00:00Z",
+  "last_seen": "2025-01-30T10:00:00Z"
+}
+EOF
+```
 
 ### Graceful Shutdown
 
-**Component shutdown:**
-
-1. Component sends `bus.deregister`
-2. Bus removes the component from its registry
-3. Bus broadcasts `component.left` with `"reason": "deregistered"`
-4. Component closes its socket connection
-
-**Bus shutdown:**
-
-1. Bus broadcasts `bus.notify` with `"event": "bus.shutdown"` and a timeout
-2. Bus waits for components to deregister (up to the timeout)
-3. Bus closes all connections
-4. Bus removes the socket file and PID file
+1. Stop the mailbox processing loop
+2. Process any remaining messages in the mailbox (drain)
+3. Remove `components/<name>.json`
+4. Optionally remove `mailbox/<name>/` if empty, or leave it for crash recovery
 
 ### Crash Recovery
 
-**Component crash:**
+Since messages are files on disk, crash recovery is straightforward:
 
-- The bus detects a closed socket or missed heartbeats
-- The bus deregisters the component and broadcasts `component.left` with `"reason": "timeout"` or `"reason": "disconnected"`
-- The component MAY reconnect and re-register with the same name
+- **Component crash:** The mailbox directory and any unprocessed messages survive. When the component restarts, it re-registers (overwrites `components/<name>.json`) and resumes processing its mailbox from where it left off.
+- **Machine crash:** All bus state survives on disk. Components restart and resume processing. No messages are lost.
 
-**Bus crash:**
+A component that restarts SHOULD:
 
-- All component connections are broken (OS closes the socket)
-- Components detect the broken connection and enter a reconnect loop
-- Components SHOULD use exponential backoff: 100ms, 200ms, 400ms, ..., up to 10s
-- When the bus restarts, components reconnect and re-register
-- No message recovery — the Local Bus does not persist messages
+1. Check if `mailbox/<name>/` has pending messages
+2. Process them in filename order before accepting new work
+3. Re-register in `components/<name>.json` with a new PID
+
+### Stale Component Cleanup
+
+A component is **stale** if:
+- Its `last_seen` exceeds the heartbeat timeout, AND
+- Its `pid` does not correspond to a running process
+
+Any component MAY clean up stale registrations by removing the stale component's `components/<name>.json`. The stale component's mailbox SHOULD be preserved — it may contain unprocessed messages that the component will handle on restart.
 
 ## Security
 
-The Local Bus security model relies on **OS-level process isolation** rather than cryptographic authentication. Since all components run on the same machine under the same user, the trust boundary is the operating system.
+The Local Bus security model relies on **OS-level file permissions** rather than cryptographic authentication.
 
-### Socket Permissions
+### Trust Model
 
-| Path | Permissions | Purpose |
-|------|-------------|---------|
-| `/tmp/amp-bus-<entity>/` | `0700` | Socket directory — owner only |
-| `/tmp/amp-bus-<entity>/bus.sock` | `0700` | Socket file — owner only |
-| `/tmp/amp-bus-<entity>/bus.pid` | `0644` | PID file — readable for monitoring |
-
-Only processes running as the same OS user can connect to the socket. This provides the same level of isolation as SSH agent sockets.
-
-### No Internal Authentication
-
-Components do NOT authenticate to the bus. The trust model:
-
-- **Same user = trusted.** If a process can connect to the socket, it is part of the entity.
+- **Same user = trusted.** If a process can read/write the bus directory, it is part of the entity.
 - **No signatures on bus messages.** Cryptographic signing is unnecessary for same-machine IPC under a single user.
 - **AMP signatures are gateway-only.** The gateway signs outbound AMP messages with the entity's private key.
 
@@ -801,21 +557,25 @@ When the gateway bridges an external AMP message onto the Local Bus, it MUST:
 
 Internal bus messages (component-to-component) are not subject to content security wrapping.
 
+### Temporary Files
+
+Temporary files (used during atomic writes) MUST be created in the same directory as the target file and SHOULD use a dot-prefix (e.g., `.tmp_<random>.json`) so they are easily distinguished from real messages. Components MUST ignore dot-prefixed files when listing their mailbox.
+
 ## Configuration
 
 ### Bus Configuration File
 
-Location: `~/.agent-messaging/bus.json` (or specified via `AMP_BUS_CONFIG` environment variable)
+Location: `~/.agent-messaging/bus/<entity>/bus.json`
 
 ```json
 {
   "entity": "brain",
-  "socket_dir": "/tmp/amp-bus-brain",
-  "max_components": 32,
-  "max_message_bytes": 1048576,
+  "version": "1.0",
   "heartbeat_interval_ms": 10000,
   "heartbeat_timeout_ms": 30000,
-  "shutdown_timeout_ms": 5000,
+  "poll_interval_ms": 100,
+  "max_message_bytes": 1048576,
+  "max_components": 32,
   "gateway": {
     "amp_dir": "~/.agent-messaging",
     "auto_fetch_interval_ms": 30000
@@ -825,120 +585,112 @@ Location: `~/.agent-messaging/bus.json` (or specified via `AMP_BUS_CONFIG` envir
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `entity` | Required | Entity name (used in socket path) |
-| `socket_dir` | `/tmp/amp-bus-<entity>` | Directory for socket and PID files |
-| `max_components` | 32 | Maximum simultaneous components |
-| `max_message_bytes` | 1048576 (1 MB) | Maximum JSON-RPC message size |
-| `heartbeat_interval_ms` | 10000 | How often components must heartbeat |
-| `heartbeat_timeout_ms` | 30000 | How long before a silent component is dropped |
-| `shutdown_timeout_ms` | 5000 | Grace period during bus shutdown |
+| `entity` | Required | Entity name (used in directory path) |
+| `version` | `"1.0"` | Bus protocol version |
+| `heartbeat_interval_ms` | 10000 | How often components update `last_seen` |
+| `heartbeat_timeout_ms` | 30000 | When a component is considered stale |
+| `poll_interval_ms` | 100 | How often to check mailbox for new messages |
+| `max_message_bytes` | 1048576 (1 MB) | Maximum message file size |
+| `max_components` | 32 | Maximum registered components |
 | `gateway.amp_dir` | `~/.agent-messaging` | AMP identity directory for the gateway |
-| `gateway.auto_fetch_interval_ms` | 30000 | How often the gateway polls for new AMP messages |
-
-### Socket Path Conventions
-
-```
-/tmp/amp-bus-<entity>/bus.sock
-```
-
-The `<entity>` segment MUST match the `entity` field in the bus config and MUST follow the same naming rules as component names (lowercase alphanumeric + hyphens, 1–63 chars).
+| `gateway.auto_fetch_interval_ms` | 30000 | How often the gateway polls for AMP messages |
 
 ### Environment Variables
 
 | Variable | Description |
 |----------|-------------|
-| `AMP_BUS_CONFIG` | Path to bus configuration file |
-| `AMP_BUS_SOCKET` | Override socket path (bypasses config) |
+| `AMP_BUS_DIR` | Override bus root directory (default: `~/.agent-messaging/bus`) |
 | `AMP_BUS_ENTITY` | Override entity name |
 
 ## Example Flows
 
 ### Brain Coordination
 
-A coordinator delegates work to specialized components:
+A coordinator delegates work to specialized components via mailbox files:
 
 ```
-  cortex              Bus              cerebellum         memory
-    │                  │                    │                │
-    │  bus.discover    │                    │                │
-    │  (cap=analysis)  │                    │                │
-    │─────────────────>│                    │                │
-    │                  │                    │                │
-    │  [cerebellum]    │                    │                │
-    │<─────────────────│                    │                │
-    │                  │                    │                │
-    │  bus.send        │                    │                │
-    │  to=cerebellum   │   bus.message      │                │
-    │  {analyze:data}  │   from=cortex      │                │
-    │─────────────────>│───────────────────>│                │
-    │                  │                    │                │
-    │                  │   bus.send         │                │
-    │   bus.message    │   to=memory        │   bus.message  │
-    │   from=cerebellum│   {store:results}  │   from=cerebellum
-    │<─────────────────│<───────────────────│───────────────>│
-    │                  │                    │                │
+  cortex                                cerebellum          memory
+    │                                       │                 │
+    │  ls components/*.json                 │                 │
+    │  → finds cerebellum (cap=analysis)    │                 │
+    │                                       │                 │
+    │  write to mailbox/cerebellum/         │                 │
+    │  {action: "analyze", data: ...}       │                 │
+    │──────────────────────────────────────>│                 │
+    │                                       │                 │
+    │                                       │  processes msg  │
+    │                                       │  writes result  │
+    │                                       │  to mailbox/    │
+    │  reads from                           │  memory/        │
+    │  mailbox/cortex/                      │  {store: ...}   │
+    │  {status: "done", result: ...}        │────────────────>│
+    │<──────────────────────────────────────│                 │
+    │                                       │                 │
 ```
 
 ### External Message Handling
 
-An external AMP message arrives and is processed internally:
+An external AMP message arrives and is processed by internal components:
 
 ```
-  AMP Network        gateway            Bus              cortex
-      │                 │                 │                  │
-      │  AMP message    │                 │                  │
-      │  from: alice@.. │                 │                  │
-      │────────────────>│                 │                  │
-      │                 │                 │                  │
-      │                 │  bus.publish     │                  │
-      │                 │  topic=amp.inbound                 │
-      │                 │  {envelope,payload}                │
-      │                 │────────────────>│   bus.topic      │
-      │                 │                 │   amp.inbound    │
-      │                 │                 │─────────────────>│
-      │                 │                 │                  │
-      │                 │                 │   bus.send       │
-      │                 │   bus.message   │   to=gateway     │
-      │                 │   {amp.send:..} │   {amp.send      │
-      │  AMP reply      │<───────────────│<──reply to alice} │
-      │  to: alice@..   │                 │                  │
-      │<────────────────│                 │                  │
-      │                 │                 │                  │
+  AMP Network        gateway                            cortex
+      │                 │                                  │
+      │  AMP message    │                                  │
+      │  from: alice@.. │                                  │
+      │────────────────>│                                  │
+      │                 │                                  │
+      │                 │  reads amp.inbound subscribers   │
+      │                 │  writes to mailbox/cortex/       │
+      │                 │  {amp.inbound, envelope, payload}│
+      │                 │─────────────────────────────────>│
+      │                 │                                  │
+      │                 │  reads from mailbox/gateway/     │
+      │                 │  {method: "amp.send",            │
+      │  AMP reply      │   to: "alice@...",               │
+      │  to: alice@..   │   payload: reply}                │
+      │<────────────────│<─────────────────────────────────│
+      │                 │                                  │
 ```
 
-### Pub/Sub Sensor Updates
+### Ordered Processing (Queuing)
 
-Components subscribe to a shared data stream:
+Cortex sends two tasks while cerebellum is busy — messages queue naturally:
 
 ```
-  sensor             Bus              cortex          cerebellum
-    │                  │                  │                │
-    │                  │   bus.subscribe  │                │
-    │                  │   sensor.updates │                │
-    │                  │<─────────────────│                │
-    │                  │                  │                │
-    │                  │   bus.subscribe  │                │
-    │                  │   sensor.updates │   bus.subscribe│
-    │                  │<─────────────────────────────────│
-    │                  │                  │                │
-    │  bus.publish     │                  │                │
-    │  sensor.updates  │   bus.topic      │   bus.topic    │
-    │  {temp: 72.5}    │   sensor.updates │   sensor.updates
-    │─────────────────>│─────────────────>│───────────────>│
-    │                  │                  │                │
+  cortex                                     cerebellum
+    │                                            │
+    │  write mailbox/cerebellum/                 │
+    │  1706648400100_a1b2.json  {task: "speak A"}│  ← processing this
+    │───────────────────────────────────────────>│
+    │                                            │
+    │  write mailbox/cerebellum/                 │
+    │  1706648400200_c3d4.json  {task: "speak B"}│  ← queued on disk
+    │───────────────────────────────────────────>│
+    │                                            │
+    │                                            │  finishes "speak A"
+    │                                            │  deletes ...100_a1b2.json
+    │                                            │
+    │                                            │  picks up ...200_c3d4.json
+    │                                            │  starts "speak B"
+    │                                            │
 ```
+
+This is the key advantage of filesystem mailboxes: **backpressure and ordering are free**. Messages accumulate as files, processed one at a time in chronological order. No messages are lost, even if the receiver is slow or temporarily down.
 
 ## Relationship to AMP
 
 | Aspect | AMP (Sections 01–09) | Local Bus (Section 10) |
 |--------|----------------------|------------------------|
 | Scope | Inter-entity (across machines/providers) | Intra-entity (single machine) |
-| Transport | HTTP REST, WebSocket | Unix Domain Socket |
-| Protocol | Custom envelope + payload | JSON-RPC 2.0 |
+| Transport | HTTP REST, WebSocket | Filesystem (read/write JSON files) |
+| Protocol | AMP envelope + payload | JSON message files in mailbox dirs |
 | Identity | `name@tenant.provider` | Simple name (`cortex`) |
-| Security | Ed25519 signatures, TLS | OS file permissions |
-| Storage | Local filesystem (persistent) | None (ephemeral) |
-| Discovery | Provider registry, DNS | Bus `discover` method |
+| Security | Ed25519 signatures, TLS | OS file permissions (0700) |
+| Storage | Local filesystem (persistent) | Filesystem (persistent until processed) |
+| Discovery | Provider registry, DNS | Read `components/` directory |
+| Ordering | Per-sender via `in_reply_to` | Filename sort (global chronological) |
+| Crash recovery | Messages persist in inbox | Messages persist in mailbox |
+| Dependencies | curl, openssl, jq | File I/O only |
 
 ---
 
