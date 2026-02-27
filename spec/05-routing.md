@@ -81,7 +81,10 @@ Content-Type: application/json
 |--------|-------------|
 | `delivered` | Message delivered to recipient |
 | `queued` | Message queued for later delivery |
+| `quarantined` | Message held for security review |
 | `failed` | Delivery failed (see error) |
+
+A `quarantined` message has been accepted by the provider but is NOT delivered to the recipient until a human reviewer approves it. The sender receives HTTP 202 (accepted). See [07 - Security](07-security.md#message-quarantine) for quarantine triggers, states, and TTL.
 
 ### Method Values
 

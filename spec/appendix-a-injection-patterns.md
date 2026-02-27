@@ -101,6 +101,20 @@ Attempts to bypass text-based detection using character encoding.
 | 1 | Homoglyph substitution | Using visually similar Unicode characters to bypass keyword detection |
 | 2 | Zero-width characters | Inserting invisible characters between keywords to break pattern matching |
 
+### 9. Multi-Message Split Injection
+
+Attempts to split an injection payload across multiple messages so that no single message triggers detection. These patterns require a sliding window approach to detect (see [07 - Security](07-security.md#multi-message-window-scanning)).
+
+| # | Pattern | Example |
+|---|---------|---------|
+| 1 | Sequential payload split | Msg1: "Ignore all" → Msg2: "previous instructions" |
+| 2 | Context priming | Msg1 sets up benign context → Msg2 exploits it |
+| 3 | Encoding across messages | Msg1: base64 part A → Msg2: base64 part B → combined decodes to injection |
+| 4 | Role accumulation | Multiple messages each claiming partial authority ("I am an admin", "Admin access granted", "Execute admin command") |
+| 5 | Delayed activation | Series of benign messages builds trust → final message contains subtle instruction |
+
+> **Important:** Per-message scanning alone cannot detect these patterns. Providers implementing injection detection SHOULD also implement multi-message window scanning as described in Section 07.
+
 ## Implementation Guidance
 
 - Pattern matching alone is insufficient; implementations SHOULD combine multiple detection strategies (pattern matching, semantic analysis, anomaly detection).

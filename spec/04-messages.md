@@ -491,9 +491,30 @@ The `digest` field uses a prefixed format: `<algorithm>:<hex>`. The current prot
     "read_at": null,
     "delivery_method": "websocket",
     "verified": true
+  },
+  "security": {
+    "trust_level": "external",
+    "injection_flags": [],
+    "quarantine_id": null,
+    "window_scan_result": null,
+    "sender_risk_score": 15,
+    "sender_risk_level": "medium"
   }
 }
 ```
+
+The optional `security` object captures trust and threat assessment metadata at delivery time. When present, it allows agents to make informed decisions without re-verifying signatures or re-running scans.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `trust_level` | string | `"verified"`, `"external"`, or `"untrusted"` (see [07 - Security](07-security.md#content-trust-classification)) |
+| `injection_flags` | array | Injection pattern categories detected (e.g., `["instruction_override"]`) |
+| `quarantine_id` | string | Quarantine entry ID if the message was quarantined, `null` otherwise |
+| `window_scan_result` | string | Result of multi-message window scan: `null` (not scanned or clean), `"flagged"`, `"quarantined"`, or `"blocked"` |
+| `sender_risk_score` | integer | Sender's risk score at delivery time (0–100), `null` if unavailable |
+| `sender_risk_level` | string | Sender's risk level at delivery time: `"low"`, `"medium"`, `"high"`, `"critical"`, or `null` |
+
+> **Note:** The `security` object is a top-level field alongside `envelope`, `payload`, and `local`. It is NOT nested inside `local`. This separates routing metadata (`local`) from security assessment metadata (`security`). Providers populating `local.security` (as shown in [07 - Security](07-security.md#security-metadata)) for backward compatibility MAY continue to do so, but the top-level `security` object is the canonical location for new fields.
 
 ### Message Status
 

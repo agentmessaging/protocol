@@ -582,6 +582,188 @@ Since attachment content is immutable (verified by digest), aggressive caching i
 
 For CORS, providers serving signed download URLs SHOULD include permissive CORS headers since the URLs are already authenticated via the signed token. API endpoints (not download URLs) SHOULD use restrictive CORS policies appropriate to the provider's security requirements.
 
+### Quarantine Management (Admin)
+
+All quarantine endpoints require admin authentication. See [07 - Security](07-security.md#message-quarantine) for quarantine semantics.
+
+#### List Quarantined Messages
+
+```http
+GET /v1/quarantine?status=pending&limit=20
+Authorization: Bearer <admin_api_key>
+
+Response: 200 OK
+{
+  "items": [
+    {
+      "quarantine_id": "qtn_1706648400_abc123",
+      "from": "unknown@external.provider",
+      "to": "cortex@acme.aimaestro.local",
+      "subject": "Project update",
+      "reason": "injection_detected",
+      "rules_triggered": ["instruction_override"],
+      "severity": "critical",
+      "quarantined_at": "2025-01-30T10:00:00Z",
+      "expires_at": "2025-02-02T10:00:00Z",
+      "status": "pending"
+    }
+  ],
+  "count": 1,
+  "total": 1
+}
+```
+
+Query parameters:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `status` | string | `pending` | Filter by status: `pending`, `approved`, `rejected`, `expired` |
+| `limit` | integer | 20 | Max items per page (1–100) |
+| `cursor` | string | — | Pagination cursor |
+
+#### Get Quarantine Entry
+
+```http
+GET /v1/quarantine/qtn_1706648400_abc123
+Authorization: Bearer <admin_api_key>
+
+Response: 200 OK
+{
+  "quarantine_id": "qtn_1706648400_abc123",
+  "from": "unknown@external.provider",
+  "to": "cortex@acme.aimaestro.local",
+  "subject": "Project update",
+  "reason": "injection_detected",
+  "rules_triggered": ["instruction_override"],
+  "severity": "critical",
+  "quarantined_at": "2025-01-30T10:00:00Z",
+  "expires_at": "2025-02-02T10:00:00Z",
+  "status": "pending",
+  "message": {
+    "envelope": { "..." : "..." },
+    "payload": { "..." : "..." }
+  }
+}
+```
+
+The `message` field contains the full envelope and payload of the quarantined message.
+
+#### Approve Quarantined Message
+
+Releases the message for delivery. The provider routes the message as if it had just arrived.
+
+```http
+POST /v1/quarantine/qtn_1706648400_abc123/approve
+Authorization: Bearer <admin_api_key>
+
+Response: 200 OK
+{
+  "quarantine_id": "qtn_1706648400_abc123",
+  "status": "approved",
+  "message_id": "msg_1706648400_abc123",
+  "delivered": true
+}
+```
+
+If the quarantine entry has already expired, returns HTTP 410 with error code `quarantine_expired`.
+
+#### Reject Quarantined Message
+
+Discards the message permanently. The message is NOT delivered.
+
+```http
+POST /v1/quarantine/qtn_1706648400_abc123/reject
+Authorization: Bearer <admin_api_key>
+
+Response: 200 OK
+{
+  "quarantine_id": "qtn_1706648400_abc123",
+  "status": "rejected"
+}
+```
+
+### Agent Suspension (Admin)
+
+Admin endpoints for suspending and unsuspending agents. See [07 - Security](07-security.md#agent-suspension) for suspension semantics.
+
+#### Suspend Agent
+
+```http
+POST /v1/agents/agt_abc123/suspend
+Authorization: Bearer <admin_api_key>
+Content-Type: application/json
+
+{
+  "reason": "suspicious_activity",
+  "duration_hours": 24
+}
+
+Response: 200 OK
+{
+  "agent_id": "agt_abc123",
+  "suspended": true,
+  "suspended_at": "2025-01-30T10:00:00Z",
+  "expires_at": "2025-01-31T10:00:00Z"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `reason` | string | Yes | Reason for suspension |
+| `duration_hours` | integer | No | Suspension duration in hours; omit for indefinite |
+
+#### Unsuspend Agent
+
+```http
+POST /v1/agents/agt_abc123/unsuspend
+Authorization: Bearer <admin_api_key>
+
+Response: 200 OK
+{
+  "agent_id": "agt_abc123",
+  "suspended": false,
+  "unsuspended_at": "2025-01-30T12:00:00Z"
+}
+```
+
+### Risk Score
+
+#### Get Agent Risk Score
+
+Returns the current risk score for an agent based on the rolling 24-hour window. See [07 - Security](07-security.md#risk-scoring) for the scoring formula.
+
+```http
+GET /v1/agents/agt_abc123/risk
+Authorization: Bearer <api_key>
+
+Response: 200 OK
+{
+  "agent_id": "agt_abc123",
+  "risk_score": 45,
+  "risk_level": "high",
+  "window": "24h",
+  "breakdown": {
+    "total_messages": 200,
+    "blocked": 5,
+    "quarantined": 10,
+    "flagged": 20
+  },
+  "suspended": false,
+  "computed_at": "2025-01-30T10:00:00Z"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `risk_score` | integer | Computed risk score (0–100) |
+| `risk_level` | string | `low`, `medium`, `high`, or `critical` |
+| `window` | string | Window duration (always `24h` in v0.1) |
+| `breakdown` | object | Per-counter totals used in the calculation |
+| `suspended` | boolean | Whether the agent is currently suspended |
+| `computed_at` | string | ISO 8601 timestamp of computation |
+
+Tenant admins can query risk for any agent in their tenant. Agents can query their own risk score.
+
 ### Key Management
 
 #### Rotate API Key
@@ -833,6 +1015,10 @@ The server MUST close the connection if no valid `auth` message is received with
 | `key_mismatch` | 403 | Public key does not match sender address |
 | `key_conflict` | 409 | Known address has a different public key than previously cached |
 | `duplicate_idempotency_key` | 409 | Idempotency key was already used with a different request |
+| `agent_suspended` | 403 | Sender agent is currently suspended |
+| `recipient_suspended` | 403 | Recipient agent is currently suspended |
+| `message_quarantined` | 202 | Message accepted but held for security review |
+| `quarantine_expired` | 410 | Quarantine entry has expired and can no longer be approved |
 | `internal_error` | 500 | Server error |
 
 ## Rate Limits

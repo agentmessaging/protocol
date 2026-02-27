@@ -626,6 +626,209 @@ Providers SHOULD monitor for:
 | High | Temporary suspension, notify admin |
 | Critical | Immediate suspension |
 
+## Message Quarantine
+
+Messages that trigger high-severity security rules MAY be held in a quarantine queue for human review instead of being delivered immediately. Quarantine provides a safety net between automated detection and irreversible delivery.
+
+### Quarantine Triggers
+
+Providers SHOULD quarantine messages based on configurable rules. Recommended defaults:
+
+- Any injection detection rule with severity `critical` triggers immediate quarantine.
+- Three or more `flag` verdicts from the same sender within 10 minutes escalate the next message to quarantine.
+- Provider admins MAY define additional quarantine triggers (e.g., specific pattern categories, attachment scan results, risk score thresholds).
+
+### Quarantine States
+
+| State | Description |
+|-------|-------------|
+| `pending` | Message is held, awaiting human review |
+| `approved` | Reviewer released the message for delivery |
+| `rejected` | Reviewer discarded the message |
+| `expired` | TTL elapsed without review (treated as rejected) |
+
+State transitions are one-directional: `pending` → `approved` | `rejected` | `expired`.
+
+### Quarantine Metadata
+
+Each quarantined message carries the following metadata:
+
+```json
+{
+  "quarantine_id": "qtn_1706648400_abc123",
+  "reason": "injection_detected",
+  "rules_triggered": ["instruction_override", "data_exfiltration"],
+  "severity": "critical",
+  "quarantined_at": "2025-01-30T10:00:00Z",
+  "expires_at": "2025-02-02T10:00:00Z",
+  "status": "pending"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `quarantine_id` | string | Unique quarantine entry ID (`qtn_<timestamp>_<hex>`) |
+| `reason` | string | Why the message was quarantined (e.g., `injection_detected`, `risk_threshold`) |
+| `rules_triggered` | array | Injection pattern categories that triggered quarantine |
+| `severity` | string | Highest severity among triggered rules (`warning`, `high`, `critical`) |
+| `quarantined_at` | string | ISO 8601 timestamp of when the message was quarantined |
+| `expires_at` | string | ISO 8601 timestamp after which the entry auto-expires |
+| `status` | string | Current quarantine state: `pending`, `approved`, `rejected`, `expired` |
+
+### TTL and Expiration
+
+Quarantined messages expire after **72 hours** by default (provider-configurable). When a quarantine entry expires:
+
+- The message is NOT delivered.
+- The entry status transitions to `expired`.
+- The provider SHOULD log the expiration for audit purposes.
+
+### Notifications
+
+- Providers SHOULD notify the recipient that a message is being held for review (without revealing message content).
+- Providers SHOULD notify the sender when a message is rejected, without revealing which specific detection rules were triggered.
+- Providers MUST NOT reveal quarantine detection details to the sender, as this would help attackers refine their payloads.
+
+### Quarantine and Route Response
+
+When a message is quarantined, the route endpoint returns HTTP 202 with status `quarantined` (see [05 - Routing](05-routing.md#status-values)). The sender knows the message was accepted but not yet delivered.
+
+## Agent Suspension
+
+A suspended agent cannot send or receive messages. Suspension provides a kill switch for compromised or misbehaving agents.
+
+### Who Can Suspend
+
+- **Provider admins** — manual suspension via API
+- **Tenant admins** — manual suspension of agents within their tenant
+- **Automated systems** — risk scoring (see below) can trigger auto-suspension
+
+### Suspension Record
+
+```json
+{
+  "agent_id": "agt_abc123",
+  "suspended_at": "2025-01-30T10:00:00Z",
+  "reason": "automated_risk_threshold",
+  "suspended_by": "system",
+  "expires_at": "2025-01-31T10:00:00Z"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `agent_id` | string | The suspended agent's ID |
+| `suspended_at` | string | ISO 8601 timestamp of suspension |
+| `reason` | string | Reason for suspension (e.g., `suspicious_activity`, `automated_risk_threshold`, `admin_action`) |
+| `suspended_by` | string | Who initiated the suspension: `system`, admin agent ID, or tenant admin ID |
+| `expires_at` | string | ISO 8601 expiration timestamp; `null` for indefinite suspension |
+
+### Behavior When Suspended
+
+All message paths MUST check suspension status:
+
+| Path | Behavior |
+|------|----------|
+| `POST /v1/route` from suspended agent | HTTP 403 with error code `agent_suspended` |
+| `POST /v1/route` to suspended agent | HTTP 403 with error code `recipient_suspended` |
+| WebSocket connection by suspended agent | Close with code 4003 and reason `agent_suspended` |
+| Webhook delivery to suspended agent | Skip delivery; message remains in relay queue |
+| Relay pickup by suspended agent | HTTP 403 with error code `agent_suspended` |
+
+Messages already in a relay queue are NOT deleted when an agent is suspended. They are held and delivered after unsuspension (if they have not expired).
+
+### Unsuspension
+
+- **Manual:** Admin calls `POST /v1/agents/{agent_id}/unsuspend` (see [08 - API](08-api.md)).
+- **Automatic:** When `expires_at` passes, the suspension is lifted. Providers MUST check `expires_at` on every request rather than relying on a background job.
+
+## Risk Scoring
+
+Risk scoring provides a per-agent behavioral metric that quantifies how frequently an agent's messages trigger security actions. It enables automated escalation from monitoring to suspension.
+
+### Formula
+
+```
+risk_score = (blocked × 3 + quarantined × 2 + flagged × 1) / total_messages × 100
+```
+
+Where:
+- `blocked` — messages rejected due to security rules
+- `quarantined` — messages held for human review
+- `flagged` — messages delivered with injection flags
+- `total_messages` — total messages sent by the agent in the window
+
+If `total_messages` is 0, the risk score is 0.
+
+### Rolling Window
+
+Risk scores are computed over a **rolling 24-hour window**. Providers MUST track the following counters per agent:
+
+| Counter | Description |
+|---------|-------------|
+| `total_messages` | Total messages sent in the window |
+| `blocked` | Messages blocked (rejected) |
+| `quarantined` | Messages quarantined |
+| `flagged` | Messages delivered with injection flags |
+
+### Thresholds
+
+Providers SHOULD implement auto-escalation based on risk score thresholds. Recommended defaults (provider-configurable):
+
+| Risk Score | Level | Auto-Action |
+|-----------|-------|-------------|
+| 0–10 | `low` | None |
+| 11–30 | `medium` | Log + webhook notification to tenant admin |
+| 31–60 | `high` | Temporary rate limit (50% reduction) |
+| 61–100 | `critical` | Auto-suspend for 1 hour |
+
+### Requirements
+
+- Providers MUST track the counters listed above per agent per rolling window.
+- Providers SHOULD expose risk scores via the API (see [08 - API](08-api.md)).
+- Providers SHOULD notify tenant admins when an agent's risk level changes.
+- Auto-suspension triggered by risk scoring uses reason `automated_risk_threshold` in the suspension record.
+
+## Multi-Message Window Scanning
+
+Attackers may split injection payloads across multiple messages to evade per-message scanning. Providers SHOULD maintain a sliding window of recent messages per sender and scan the concatenated content.
+
+### Window Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| Window size | 5 messages | Number of recent messages to retain |
+| Time window | 10 minutes | Maximum age of messages in the window |
+| Scope | Per sender-recipient pair | Window is maintained per unique sender-recipient combination |
+
+### Scanning Process
+
+On each new incoming message:
+
+1. Add the new message to the sender-recipient window.
+2. Remove messages older than the time window.
+3. Concatenate the `payload.message` fields of all messages in the window.
+4. Run injection detection (see [Appendix A](appendix-a-injection-patterns.md)) on the concatenated text.
+5. If the window scan detects patterns not found in the individual message scan, apply the same verdict logic (flag, quarantine, or block) to the **current** message.
+
+### Escalation
+
+When a window scan detects an injection pattern that individual message scans missed:
+
+- The current message receives the detection verdict (flag, quarantine, or block).
+- The `security.injection_flags` metadata on the current message SHOULD include a `window_scan` indicator to distinguish window-level detections from single-message detections.
+- Previous messages in the window that contributed to the detection are NOT retroactively modified.
+
+### Privacy Requirements
+
+- Window contents are ephemeral and MUST NOT be persisted beyond the window duration.
+- Providers MUST NOT log the full concatenated window content. Only detection results (pattern category, severity) MAY be logged.
+- When a sender-recipient pair has no new messages for longer than the time window, the window MUST be discarded.
+
+### Reference
+
+See [Appendix A — Category 9: Multi-Message Split Injection](appendix-a-injection-patterns.md#9-multi-message-split-injection) for specific attack patterns that this mechanism is designed to detect.
+
 ## Incident Response
 
 ### Key Compromise
