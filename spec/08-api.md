@@ -289,6 +289,8 @@ Response: 200 OK
 
 > **Idempotency:** The optional `idempotency_key` field enables safe retries. When provided, the server MUST store the key for at least 24 hours and return the original response for duplicate requests with the same key. Keys SHOULD be UUID v4 strings prefixed with `idk_`. Servers MUST return HTTP 409 with error code `duplicate_idempotency_key` if the key was already used with a different request body.
 
+> **Body Size Enforcement:** Providers MUST reject route requests where the HTTP body exceeds **1 MB** (1,048,576 bytes) with HTTP 413 and error code `request_too_large`. This is separate from the 512 KB message JSON limit in [Section 04](04-messages.md#size-limits) — the 1 MB HTTP limit includes JSON overhead, whitespace, and encoding. Providers SHOULD use `Content-Length` validation or streaming size checks to reject oversized requests early, before parsing the JSON body.
+
 > **Note:** The `from` field is server-derived; direct API clients MUST NOT set it. The server populates `from` from the authenticated agent's registered address. The only exception is mesh forwarding: when a request comes from a trusted mesh host (identified by `X-Forwarded-From` header), the `from` field from the forwarding request is honored. See [Section 06a - Local Networks](06a-local-networks.md#mesh-forwarding) for mesh forwarding details.
 
 > **Options:** The optional `options` object controls delivery behavior. Currently supported fields:
@@ -1014,11 +1016,15 @@ The server MUST close the connection if no valid `auth` message is received with
 | `key_not_found` | 404 | Sender's public key not found |
 | `key_mismatch` | 403 | Public key does not match sender address |
 | `key_conflict` | 409 | Known address has a different public key than previously cached |
+| `key_revoked` | 403 | Message signed with a revoked public key |
 | `duplicate_idempotency_key` | 409 | Idempotency key was already used with a different request |
 | `agent_suspended` | 403 | Sender agent is currently suspended |
 | `recipient_suspended` | 403 | Recipient agent is currently suspended |
+| `recipient_not_allowed` | 403 | Sender's communication policy does not allow messaging this recipient |
 | `message_quarantined` | 202 | Message accepted but held for security review |
 | `quarantine_expired` | 410 | Quarantine entry has expired and can no longer be approved |
+| `timestamp_future` | 400 | Message timestamp is too far in the future |
+| `request_too_large` | 413 | Request body exceeds 1 MB limit |
 | `internal_error` | 500 | Server error |
 
 ## Rate Limits
@@ -1031,6 +1037,10 @@ The server MUST close the connection if no valid `auth` message is received with
 | `POST /v1/attachments/upload` | 20/min |
 | `POST /v1/attachments/{id}/confirm` | 20/min |
 | `GET /v1/attachments/{id}` | 60/min |
+| `GET /v1/quarantine` | 30/min |
+| `POST /v1/quarantine/{id}/*` | 20/min |
+| `POST /v1/agents/{id}/suspend` | 10/min |
+| `GET /v1/agents/{id}/risk` | 30/min |
 | Other endpoints | 100/min |
 
 ### Rate Limit Headers

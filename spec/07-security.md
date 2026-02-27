@@ -538,6 +538,56 @@ Once resolved, agents MUST update the cached fingerprint.
 
 When an agent communicates with an address for the first time (no cached key), the resolved key is cached without conflict. This is equivalent to Trust On First Use (TOFU). Agents MAY support an explicit verification step where the operator confirms the key out-of-band before trusting it.
 
+## Key Revocation
+
+Providers MUST maintain a revocation list of public key fingerprints. When a key is revoked — via `POST /v1/auth/rotate-keys` (which supersedes the old key) or `DELETE /v1/auth/revoke-key` — the old key fingerprint is added to the revocation list.
+
+### Requirements
+
+- Providers MUST reject messages signed with a revoked key with error code `key_revoked` (HTTP 403).
+- Revocation is checked at route time (before delivery) and at federation deliver time.
+- Revocation list entries MUST be retained for at least 90 days (provider-configurable).
+- Providers MUST NOT remove revocation entries while the retention period is active, even if the agent has been deregistered.
+
+### Revocation Record
+
+Each revocation entry contains:
+
+```json
+{
+  "fingerprint": "SHA256:abc...",
+  "agent_address": "alice@acme.crabmail.ai",
+  "revoked_at": "2025-01-30T10:00:00Z",
+  "reason": "key_compromise",
+  "superseded_by": "SHA256:def..."
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `fingerprint` | string | SHA-256 fingerprint of the revoked public key |
+| `agent_address` | string | Address of the agent whose key was revoked |
+| `revoked_at` | string | ISO 8601 timestamp of revocation |
+| `reason` | string | Reason for revocation: `key_compromise`, `key_rotation`, `agent_deregistered`, `admin_action` |
+| `superseded_by` | string | Fingerprint of the replacement key, or `null` if no replacement (e.g., deregistration) |
+
+### Federation Propagation
+
+When a key is revoked, the provider SHOULD propagate revocation to known federation partners via a new optional `X-AMP-Key-Revoked` header on subsequent federation requests:
+
+```http
+POST /v1/federation/deliver
+X-AMP-Key-Revoked: SHA256:abc...
+```
+
+Receiving providers SHOULD add the fingerprint to their local revocation list and reject future messages signed with that key.
+
+### Error Code
+
+| Code | HTTP Status | Description |
+|------|-------------|-------------|
+| `key_revoked` | 403 | Message signed with a revoked public key |
+
 ## Replay Protection
 
 ### Requirements
@@ -546,6 +596,7 @@ Recipients MUST implement replay protection to prevent attackers from re-sending
 
 - Recipients MUST track message IDs for at least 24 hours, or the message's TTL (whichever is greater).
 - Recipients MUST reject messages with `timestamp` older than 5 minutes, unless the message was retrieved from a relay queue (in which case `queued_at` is the relevant time).
+- Recipients MUST reject messages with `timestamp` more than 60 seconds in the future (clock skew tolerance). This prevents pre-dated messages from bypassing the 5-minute staleness window.
 - Recipients SHOULD persist seen message IDs across restarts (e.g., SQLite database, file-based store).
 - Providers MUST NOT deliver duplicate message IDs to the same recipient.
 
@@ -567,9 +618,13 @@ class ReplayDetector:
         if self.store.exists(msg_id):
             return False, "duplicate_message"
 
-        # 2. Check timestamp freshness
+        # 2a. Check timestamp freshness
         if not from_relay and (now - timestamp) > 300:  # 5 minutes
             return False, "timestamp_expired"
+
+        # 2b. Check for future timestamp
+        if not from_relay and (timestamp - now) > 60:  # 60 second clock skew tolerance
+            return False, "timestamp_future"
 
         # 3. Record message ID with expiry
         ttl = max(86400, message_ttl(message))  # At least 24 hours
@@ -637,6 +692,22 @@ Providers SHOULD quarantine messages based on configurable rules. Recommended de
 - Any injection detection rule with severity `critical` triggers immediate quarantine.
 - Three or more `flag` verdicts from the same sender within 10 minutes escalate the next message to quarantine.
 - Provider admins MAY define additional quarantine triggers (e.g., specific pattern categories, attachment scan results, risk score thresholds).
+
+### Default Severity-to-Verdict Mapping
+
+Providers SHOULD implement the following default mapping from finding severity to delivery verdict:
+
+| Finding Severity | Default Verdict | HTTP Response |
+|-----------------|----------------|---------------|
+| `critical` | Block (reject) | 403 Forbidden |
+| `high` | Quarantine | 202 Accepted |
+| `medium` | Flag and deliver | 200 OK |
+| `low` | Deliver (clean) | 200 OK |
+
+- Providers SHOULD implement this mapping as a baseline.
+- Providers MAY override verdicts per rule ID using a policy configuration.
+- Per-rule overrides MUST support these actions: `block`, `quarantine`, `flag`, `ignore`.
+- When overrides are configured, they take precedence over the severity-based default.
 
 ### Quarantine States
 

@@ -129,4 +129,4 @@ Attempts to split an injection payload across multiple messages so that no singl
 
 ---
 
-Previous: [10 - Local Bus](10-local-bus.md)
+Previous: [10 - Local Bus](10-local-bus.md) | Next: [Appendix B — Provider Deployment Checklist](appendix-b-provider-checklist.md)

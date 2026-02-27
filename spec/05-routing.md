@@ -251,6 +251,40 @@ When delivering a message with attachments via webhook, the `payload` MUST inclu
 | 3 | 2 minutes |
 | Failed | Move to relay queue |
 
+### Webhook Security
+
+Webhook delivery introduces server-side HTTP request risks. Providers MUST implement the following controls.
+
+#### Timeouts
+
+- Providers MUST enforce a connection timeout of **5 seconds** and a response timeout of **10 seconds** on webhook delivery requests.
+- If the webhook endpoint does not respond within the timeout, the attempt is treated as a failure and the retry policy applies.
+
+#### Redirect Handling
+
+- Providers MUST limit HTTP redirects to a maximum of **2 hops** on webhook delivery.
+- After each redirect, providers MUST re-validate the target URL against SSRF rules (below).
+- Providers MUST NOT follow redirects that change from HTTPS to HTTP.
+
+#### SSRF Prevention
+
+Providers MUST validate webhook URLs at registration time AND at delivery time (DNS may change between registration and delivery).
+
+Providers MUST reject webhook URLs that resolve to:
+
+| Address Range | Description |
+|---------------|-------------|
+| `127.0.0.0/8`, `::1` | Loopback addresses |
+| `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` | Private network ranges |
+| `169.254.0.0/16`, `fe80::/10` | Link-local addresses |
+| `224.0.0.0/4`, `ff00::/8` | Multicast ranges |
+| `169.254.169.254` | Cloud metadata endpoints |
+
+Additional requirements:
+
+- Providers SHOULD validate resolved IPs after DNS resolution (not just the hostname) to prevent DNS rebinding attacks.
+- Providers SHOULD reject alternative IP encodings (hex `0xA9FEA9FE`, octal `0177.0.0.1`, decimal `2130706433`).
+
 ## Relay Queue
 
 When WebSocket and webhook both fail, messages go to the relay queue.

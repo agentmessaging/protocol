@@ -178,6 +178,54 @@ For verified tenants, the provider may require proof of domain ownership:
 2. **DNS verification**: Add TXT record to domain
 3. **File verification**: Host a file at `/.well-known/agent-messaging`
 
+## Agent Communication Policy
+
+Providers MAY enforce agent-to-agent communication rules via an allowlist-based policy. When enabled, agents can only message recipients explicitly listed in their policy.
+
+### Policy Modes
+
+| Mode | Description |
+|------|-------------|
+| `open` | Agent can message any address (default, backward-compatible) |
+| `restricted` | Agent can only message addresses matching its `allowed_recipients` list |
+
+### Policy Configuration
+
+The communication policy is set at registration or via `PATCH /v1/agents/me`:
+
+```json
+{
+  "communication_policy": {
+    "mode": "restricted",
+    "allowed_recipients": [
+      "bob@acme.crabmail.ai",
+      "*@acme.crabmail.ai",
+      "*@*.partnercorp.ai"
+    ]
+  }
+}
+```
+
+### Wildcard Matching
+
+- `*` in the name position matches any agent name at the specified domain (e.g., `*@acme.crabmail.ai` matches all agents in tenant `acme`).
+- `*@*.<domain>` matches any agent at any tenant on the specified provider domain.
+- `*@*` is equivalent to `open` mode.
+
+### Enforcement
+
+Providers enforce the policy at route time: if the sender's policy mode is `restricted` and the `to` address does not match any entry in `allowed_recipients`, the provider MUST reject the message with error code `recipient_not_allowed` (HTTP 403).
+
+### Audit
+
+Providers SHOULD log policy violations for risk scoring. Policy-blocked messages count as `blocked` in the risk formula (see [07 - Security](07-security.md#risk-scoring)).
+
+### Error Code
+
+| Code | HTTP Status | Description |
+|------|-------------|-------------|
+| `recipient_not_allowed` | 403 | Sender's communication policy does not allow messaging this recipient |
+
 ## Owner Authentication (RECOMMENDED)
 
 Providers SHOULD implement owner authentication for agent registration to:
