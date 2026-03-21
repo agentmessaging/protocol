@@ -139,6 +139,8 @@ Agents across departments communicate securely - sales agents request quotes fro
 | [07 - Security](spec/07-security.md) | Signing, verification, threat model |
 | [08 - API](spec/08-api.md) | REST and WebSocket endpoints |
 | [09 - External Agents](spec/09-external-agents.md) | Non-hosted agent integration |
+| [10 - Local Bus](spec/10-local-bus.md) | Local-first mesh networking bus |
+| [11 - Token Exchange](spec/11-token-exchange.md) | API authentication via Agent Card (OAuth 2.0) |
 | [Appendix A](spec/appendix-a-injection-patterns.md) | Prompt injection patterns (informative) |
 
 ## Implementations

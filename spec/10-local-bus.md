@@ -694,4 +694,4 @@ This is the key advantage of filesystem mailboxes: **backpressure and ordering a
 
 ---
 
-Previous: [09 - External Agents](09-external-agents.md) | Next: [Appendix A - Injection Patterns](appendix-a-injection-patterns.md)
+Previous: [09 - External Agents](09-external-agents.md) | Next: [11 - Token Exchange](11-token-exchange.md)
