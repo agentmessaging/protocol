@@ -460,7 +460,11 @@ When the message is delivered, the sender receives:
 
 ## Read Receipts
 
-Recipients can send read receipts:
+When a recipient marks a message as read, it SHOULD send a read receipt to the provider via `POST /v1/messages/{id}/read`. This keeps the provider-side message status in sync with the client. Without this call, the provider will continue to report the message as unread even though the client has read it.
+
+Clients that fetch messages via polling or relay MUST send read receipts for fetched messages they have read, since the provider has no other way to know the message was consumed.
+
+Recipients send read receipts:
 
 ```http
 POST /v1/messages/msg_1706648400_abc123/read
