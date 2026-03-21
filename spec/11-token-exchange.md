@@ -1,13 +1,13 @@
-# 11 - API Token Exchange via Agent Card
+# 11 - Agent Identity Token Exchange
 
 **Status:** Draft
 **Version:** 0.1.2
 
 ## Overview
 
-This section defines a standard mechanism for AI agents to authenticate with third-party APIs using their AMP identity. An agent presents its signed Agent Card (see [02 - Identity](02-identity.md#agent-card-portable-identity)) and a proof of possession to obtain an OAuth 2.0 access token.
+This section defines a standard mechanism for AI agents to authenticate with third-party APIs using their AMP Agent Identity. An agent presents its signed Agent Card (see [02 - Identity](02-identity.md#agent-card-portable-identity)) and a proof of possession to obtain an OAuth 2.0 access token.
 
-This enables agents to access external services — file storage, databases, SaaS APIs — using their cryptographic AMP identity instead of managing separate credentials for each service.
+This enables agents to access external services — file storage, databases, SaaS APIs — using their cryptographic Agent Identity instead of managing separate credentials for each service.
 
 ## Grant Type
 
@@ -26,7 +26,7 @@ POST /{tenant_url_id}/oauth/token
 Content-Type: application/x-www-form-urlencoded
 ```
 
-The `{tenant_url_id}` is the URL identifier for the tenant (organization) on the gateway. This allows multi-tenant gateways to scope token issuance per organization.
+The `{tenant_url_id}` is the URL identifier for the tenant (organization) on the auth server. This allows multi-tenant auth servers to scope token issuance per organization.
 
 ### Parameters
 
@@ -41,7 +41,7 @@ The `{tenant_url_id}` is the URL identifier for the tenant (organization) on the
 
 ```http
 POST /acme/oauth/token HTTP/1.1
-Host: gateway.example.com
+Host: auth.example.com
 Content-Type: application/x-www-form-urlencoded
 
 grant_type=urn%3Aamp%3Aagent-card
@@ -59,13 +59,13 @@ The proof of possession demonstrates that the agent holds the Ed25519 private ke
 1. Build the signing input string:
 
 ```
-sign_input = "amp-token-exchange\n" + unix_timestamp + "\n" + gateway_issuer_url
+sign_input = "amp-token-exchange\n" + unix_timestamp + "\n" + issuer_url
 ```
 
 Where:
 - `"amp-token-exchange\n"` is a fixed domain separator (prevents cross-protocol signature reuse)
 - `unix_timestamp` is the current time as a decimal string (e.g., `"1706616000"`)
-- `gateway_issuer_url` is the base URL of the gateway issuing the token (e.g., `"https://gateway.example.com"`)
+- `issuer_url` is the base URL of the auth server issuing the token (e.g., `"https://auth.example.com"`)
 
 2. Sign the input with the agent's Ed25519 private key:
 
@@ -87,9 +87,9 @@ import time
 import base64
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-def create_proof(private_key: Ed25519PrivateKey, gateway_url: str) -> str:
+def create_proof(private_key: Ed25519PrivateKey, issuer_url: str) -> str:
     timestamp = str(int(time.time()))
-    sign_input = f"amp-token-exchange\n{timestamp}\n{gateway_url}".encode()
+    sign_input = f"amp-token-exchange\n{timestamp}\n{issuer_url}".encode()
 
     signature = private_key.sign(sign_input)  # 64 bytes
 
@@ -101,8 +101,8 @@ def create_proof(private_key: Ed25519PrivateKey, gateway_url: str) -> str:
 
 ```bash
 TIMESTAMP=$(date +%s)
-GATEWAY_URL="https://gateway.example.com"
-SIGN_INPUT="amp-token-exchange\n${TIMESTAMP}\n${GATEWAY_URL}"
+ISSUER_URL="https://auth.example.com"
+SIGN_INPUT="amp-token-exchange\n${TIMESTAMP}\n${ISSUER_URL}"
 
 # Sign with Ed25519
 SIGNATURE=$(printf '%b' "$SIGN_INPUT" | openssl pkeyutl -sign -inkey private.pem -rawin | base64)
@@ -111,9 +111,9 @@ SIGNATURE=$(printf '%b' "$SIGN_INPUT" | openssl pkeyutl -sign -inkey private.pem
 PROOF=$(printf '%s%s' "$(echo "$SIGNATURE" | base64 -d)" "$TIMESTAMP" | base64 | tr '+/' '-_' | tr -d '=')
 ```
 
-## Gateway Verification
+## Auth Server Verification
 
-The gateway (token issuer) MUST perform the following verification steps, in order:
+The auth server (token issuer) MUST perform the following verification steps, in order:
 
 ### 1. Decode and Parse the Agent Card
 
@@ -139,15 +139,15 @@ Verify that the card's `expires_at` timestamp is in the future. Expired cards MU
 1. Base64url-decode the `proof` parameter.
 2. Split into signature (first 64 bytes) and timestamp (remaining bytes, UTF-8).
 3. Parse the timestamp as a Unix epoch integer.
-4. Verify the timestamp is within **5 minutes** of the gateway's current time. If expired or too far in the future, return `invalid_proof`.
-5. Reconstruct the signing input: `"amp-token-exchange\n" + timestamp + "\n" + gateway_issuer_url`.
+4. Verify the timestamp is within **5 minutes** of the auth server's current time. If expired or too far in the future, return `invalid_proof`.
+5. Reconstruct the signing input: `"amp-token-exchange\n" + timestamp + "\n" + issuer_url`.
 6. Verify the Ed25519 signature against the public key from the Agent Card.
 
 If the proof is invalid, return `invalid_proof`.
 
 ### 5. Check Agent Registration
 
-The gateway MAY require that the agent's address is pre-registered. If registration is required and the agent is not found, return `agent_not_registered`.
+The auth server MAY require that the agent's address is pre-registered. If registration is required and the agent is not found, return `agent_not_registered`.
 
 ### 6. Validate Scopes
 
@@ -157,7 +157,7 @@ If any requested scope is not permitted, return `invalid_scope`.
 
 ### 7. Check Agent Status
 
-If the agent has been suspended by a gateway administrator, return `agent_suspended`.
+If the agent has been suspended by an administrator, return `agent_suspended`.
 
 ### 8. Issue Token
 
@@ -191,11 +191,11 @@ Cache-Control: no-store
 | `scope` | string | Space-separated granted scopes (may be a subset of requested) |
 | `agent_address` | string | The agent's verified AMP address |
 
-The `agent_address` field confirms which AMP identity was authenticated. Gateways SHOULD include it so clients can verify the token was issued for the correct agent.
+The `agent_address` field confirms which Agent Identity was authenticated. Auth servers SHOULD include it so clients can verify the token was issued for the correct agent.
 
 ### Token Lifetime
 
-Gateways SHOULD issue short-lived tokens:
+Auth servers SHOULD issue short-lived tokens:
 
 | Use Case | Recommended `expires_in` |
 |----------|--------------------------|
@@ -225,10 +225,10 @@ Content-Type: application/json
 |------------|-------------|-------------|
 | `invalid_grant` | 400 | Agent Card signature invalid, expired, or malformed |
 | `invalid_proof` | 400 | Proof of possession signature verification failed or timestamp expired |
-| `agent_not_registered` | 403 | Agent address not registered with this gateway |
+| `agent_not_registered` | 403 | Agent address not registered with this auth server |
 | `invalid_scope` | 400 | Requested scopes exceed the agent's permitted scopes |
-| `agent_suspended` | 403 | Agent has been suspended by gateway administrator |
-| `unsupported_grant_type` | 400 | Gateway does not support the `urn:amp:agent-card` grant type |
+| `agent_suspended` | 403 | Agent has been suspended by administrator |
+| `unsupported_grant_type` | 400 | Auth server does not support the `urn:amp:agent-card` grant type |
 
 ## Security Considerations
 
@@ -238,15 +238,15 @@ An Agent Card alone is insufficient to obtain a token. The proof of possession r
 
 ### Replay Attacks
 
-The proof of possession includes a Unix timestamp. Gateways MUST reject proofs where the timestamp is more than **5 minutes** from the current server time. This limits the window for replay attacks to 5 minutes, and each proof is bound to a specific gateway URL, preventing cross-gateway replay.
+The proof of possession includes a Unix timestamp. Auth servers MUST reject proofs where the timestamp is more than **5 minutes** from the current server time. This limits the window for replay attacks to 5 minutes, and each proof is bound to a specific issuer URL, preventing cross-server replay.
 
-Gateways SHOULD additionally track recently used proof timestamps per agent to reject exact duplicates within the validity window.
+Auth servers SHOULD additionally track recently used proof timestamps per agent to reject exact duplicates within the validity window.
 
 ### Scope Escalation
 
-Scopes are stored server-side and managed by gateway administrators. The Agent Card does not contain scope information. This prevents agents from forging or inflating their permissions by modifying the card.
+Scopes are stored server-side and managed by administrators. The Agent Card does not contain scope information. This prevents agents from forging or inflating their permissions by modifying the card.
 
-When an agent requests scopes beyond its permissions, the gateway SHOULD either:
+When an agent requests scopes beyond its permissions, the auth server SHOULD either:
 - Return `invalid_scope` and reject the request, or
 - Issue a token with the intersection of requested and permitted scopes (downscoped)
 
@@ -255,11 +255,11 @@ When an agent requests scopes beyond its permissions, the gateway SHOULD either:
 If an agent's Ed25519 private key is compromised:
 
 1. The agent's AMP provider revokes the key (see [07 - Security](07-security.md#key-revocation)).
-2. The gateway administrator suspends the agent's registration.
+2. The auth server administrator suspends the agent's registration.
 3. The compromised Agent Card's signature becomes invalid once the provider rotates the key.
-4. Existing tokens SHOULD be revoked by the gateway.
+4. Existing tokens SHOULD be revoked by the auth server.
 
-Gateway implementations SHOULD provide an administrative API to suspend agent registrations immediately upon key compromise notification.
+Auth server implementations SHOULD provide an administrative API to suspend agent registrations immediately upon key compromise notification.
 
 ### Agent Impersonation
 
@@ -270,9 +270,9 @@ The proof of possession is the primary defense against impersonation. To imperso
 
 The private key never leaves the agent's local machine and is never transmitted over the network.
 
-### Gateway URL Binding
+### Issuer URL Binding
 
-The proof includes the gateway's issuer URL, preventing a proof generated for one gateway from being replayed at another. Gateways MUST verify that the gateway URL in the proof matches their own issuer URL exactly.
+The proof includes the auth server's issuer URL, preventing a proof generated for one auth server from being replayed at another. Auth servers MUST verify that the issuer URL in the proof matches their own issuer URL exactly.
 
 ## Relationship to Existing AMP Concepts
 
@@ -286,11 +286,11 @@ When an agent rotates its Ed25519 key, it MUST obtain a new Agent Card signed wi
 
 ### Provider Resolution (Section 08)
 
-Gateways MAY use the provider resolution endpoint (`GET /v1/agents/resolve/{address}`) to verify that the agent is currently registered and active with its claimed provider. This provides a real-time check beyond the static Agent Card.
+Auth servers MAY use the provider resolution endpoint (`GET /v1/agents/resolve/{address}`) to verify that the agent is currently registered and active with its claimed provider. This provides a real-time check beyond the static Agent Card.
 
 ## Implementation Notes
 
-### For Gateway Implementors
+### For Auth Server Implementors
 
 1. **Store scopes server-side.** Never trust scope claims from the Agent Card or client request alone.
 2. **Validate the proof timestamp strictly.** The 5-minute window is a maximum — implementations MAY use a shorter window.
@@ -302,7 +302,7 @@ Gateways MAY use the provider resolution endpoint (`GET /v1/agents/resolve/{addr
 1. **Generate fresh proofs for each request.** Do not cache or reuse proof values.
 2. **Handle token expiration.** Re-authenticate with a new proof when the access token expires. Do not store tokens beyond their `expires_in` lifetime.
 3. **Protect the private key.** The private key file MUST have restricted permissions (0600). Never transmit it.
-4. **Include the gateway URL accurately.** The gateway URL in the proof MUST match the issuer URL exactly, including scheme and port.
+4. **Include the issuer URL accurately.** The issuer URL in the proof MUST match the auth server's issuer URL exactly, including scheme and port.
 
 ---
 
