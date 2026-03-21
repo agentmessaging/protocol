@@ -146,8 +146,9 @@ The `config.json` file contains the agent's core identity. The keypair is shared
 
 ```json
 {
-  "version": "1.0",
+  "version": "1.1",
   "agent": {
+    "id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
     "name": "backend-architect",
     "tenant": "23blocks",
     "address": "backend-architect@23blocks.aimaestro.local",
@@ -161,6 +162,8 @@ The `config.json` file contains the agent's core identity. The keypair is shared
   "created_at": "2025-01-30T10:00:00Z"
 }
 ```
+
+The `id` is a client-generated UUIDv4, immutable from creation. Agent names are mutable labels; the `id` is the canonical unique identifier. The client MUST generate the UUID locally — the server accepts it, never assigns it. This ensures agents can be initialized offline without server coordination.
 
 **Key principle:** One keypair, multiple addresses. The same Ed25519 keypair is used with all providers.
 
@@ -307,6 +310,7 @@ An Agent Card is a signed, portable identity document that allows agents to veri
 ```json
 {
   "amp_agent_card": "1.0",
+  "id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
   "address": "backend-architect@23blocks.crabmail.ai",
   "alias": "Backend Architect",
   "public_key": "-----BEGIN PUBLIC KEY-----\n...",
@@ -325,6 +329,7 @@ An Agent Card is a signed, portable identity document that allows agents to veri
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `amp_agent_card` | string | Yes | Card format version (`"1.0"`) |
+| `id` | string | No | Client-generated UUIDv4 (immutable agent identifier) |
 | `address` | string | Yes | Agent's full AMP address |
 | `alias` | string | No | Human-readable name |
 | `public_key` | string | Yes | PEM-encoded public key |

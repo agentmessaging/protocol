@@ -15,20 +15,22 @@ Before an agent can send or receive messages, it must register with a provider. 
 └──────┬──────┘                         └──────┬──────┘
        │                                       │
        │  1. Generate keypair locally          │
+       │  2. Generate UUIDv4 agent_id locally  │
        │                                       │
-       │  2. POST /v1/register                 │
-       │  {tenant, name, public_key, ...}      │
+       │  3. POST /v1/register                 │
+       │  {tenant, name, agent_id,             │
+       │   public_key, ...}                    │
        │──────────────────────────────────────>│
        │                                       │
-       │                         3. Validate   │
-       │                         4. Check name │
-       │                         5. Store      │
+       │                         4. Validate   │
+       │                         5. Check name │
+       │                         6. Store      │
        │                                       │
-       │  6. Response                          │
+       │  7. Response                          │
        │  {address, agent_id, api_key}         │
        │<──────────────────────────────────────│
        │                                       │
-       │  7. Store identity locally            │
+       │  8. Store identity locally            │
        │                                       │
 ```
 
@@ -43,6 +45,7 @@ Content-Type: application/json
   "name": "backend-architect",
   "public_key": "-----BEGIN PUBLIC KEY-----\n...",
   "key_algorithm": "Ed25519",
+  "agent_id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
 
   // Optional
   "alias": "Backend Architect",
@@ -75,6 +78,7 @@ Content-Type: application/json
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `agent_id` | string | Client-generated UUIDv4. If provided, the server MUST use this value as the agent's canonical identifier. If absent, the server MAY generate one. Clients SHOULD always provide this field to support offline-first initialization. |
 | `alias` | string | Human-friendly display name |
 | `scope.platform` | string | Platform (`github`, `gitlab`, etc.) |
 | `scope.repo` | string | Repository name |
@@ -286,7 +290,8 @@ Content-Type: application/json
 {
   "name": "backend-architect",
   "public_key": "-----BEGIN PUBLIC KEY-----\n...",
-  "key_algorithm": "Ed25519"
+  "key_algorithm": "Ed25519",
+  "agent_id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
 }
 ```
 
