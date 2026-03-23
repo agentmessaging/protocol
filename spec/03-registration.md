@@ -24,13 +24,14 @@ Before an agent can send or receive messages, it must register with a provider. 
        │                                       │
        │                         4. Validate   │
        │                         5. Check name │
-       │                         6. Store      │
+       │                         6. Check key  │
+       │                         7. Store      │
        │                                       │
-       │  7. Response                          │
+       │  8. Response                          │
        │  {address, agent_id, api_key}         │
        │<──────────────────────────────────────│
        │                                       │
-       │  8. Store identity locally            │
+       │  9. Store identity locally            │
        │                                       │
 ```
 
@@ -116,6 +117,18 @@ Content-Type: application/json
 - **`tenant`** is a human-readable alias for `tenant_id`. Both MUST be present in the response.
 - **`route_url`** is the full URL for the `POST /v1/route` endpoint. Clients MUST use this URL rather than constructing it from the `endpoint` field.
 
+## Public Key Uniqueness
+
+Providers MUST reject registration if the submitted public key is already associated with another agent within the same tenant. This prevents:
+
+1. **Identity confusion** — two agents sharing a key are cryptographically indistinguishable; either can forge messages as the other
+2. **Revocation failures** — revoking a compromised key must disable exactly one agent, not silently affect others
+3. **Audit ambiguity** — signature verification cannot attribute a message to a specific agent if multiple agents share the key
+
+Providers SHOULD also check for key reuse across tenants within the same provider. Cross-provider key reuse cannot be detected at registration time but MAY be flagged during signature verification in federated delivery.
+
+Clients MUST generate a fresh keypair for each agent identity. Clients SHOULD verify locally (before calling `/v1/register`) that the generated fingerprint does not match any existing local agent.
+
 ## Error Responses
 
 ### 400 Bad Request
@@ -141,6 +154,18 @@ Content-Type: application/json
   ]
 }
 ```
+
+### 409 Conflict (Duplicate Public Key)
+
+```json
+{
+  "error": "key_already_registered",
+  "message": "This public key is already associated with another agent",
+  "fingerprint": "SHA256:xK4f...2jQ="
+}
+```
+
+Providers MUST NOT reveal the name or address of the existing agent to prevent information leakage.
 
 ### 403 Forbidden (Tenant Access)
 
