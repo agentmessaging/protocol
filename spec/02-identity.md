@@ -163,9 +163,27 @@ The `config.json` file contains the agent's core identity. The keypair is shared
 }
 ```
 
-The `id` is a client-generated UUIDv4, immutable from creation. Agent names are mutable labels; the `id` is the canonical unique identifier. The client MUST generate the UUID locally — the server accepts it, never assigns it. This ensures agents can be initialized offline without server coordination.
+The `id` is a client-generated UUIDv4, immutable from creation, used as a stable local handle and legacy identifier. Agent names are mutable labels. The client MUST generate the `id` locally — the server accepts it, never assigns it — so agents can be initialized offline without server coordination. The **canonical, self-certifying identifier is the key-derived DID** (see [Canonical Identifier: DID](#canonical-identifier-did-f015) below); the UUID is retained as a compatibility alias.
 
 **Key principle:** One keypair, multiple addresses. The same Ed25519 keypair is used with all providers.
+
+### Canonical Identifier: DID (F015)
+
+An agent's canonical identifier SHOULD be a **key-derived DID**, so the identifier is
+bound to the key and cannot drift from it:
+
+- **`did:key`** (RECOMMENDED default, self-certifying) — the identifier *is* the public
+  key, encoded as `did:key:z<base58btc(multicodec(0xed01) || raw-ed25519-pubkey)>`. Because
+  the id derives from the key, two agents cannot share an identity without sharing a keypair,
+  and the id cannot drift from the fingerprint. See
+  [did:key method](https://w3c-ccg.github.io/did-method-key/).
+- **`did:web`** (OPTIONAL) — for org-domain-rooted identities, resolved via a `.well-known`
+  document.
+
+Implementations MUST use the *thin* DID methods above (`did:key` is the key in a multibase
+wrapper; `did:web` is a URL) — **not** blockchain-anchored methods. The client-generated
+UUID MAY be retained as a legacy alias during migration, but the DID is the canonical,
+self-certifying principal. The Agent Card (below) carries the DID as its `id`.
 
 ## Multi-Provider Identity
 
@@ -329,7 +347,7 @@ An Agent Card is a signed, portable identity document that allows agents to veri
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `amp_agent_card` | string | Yes | Card format version (`"1.0"`) |
-| `id` | string | No | Client-generated UUIDv4 (immutable agent identifier) |
+| `id` | string | No | Canonical identifier — the key-derived DID (see [Canonical Identifier: DID](#canonical-identifier-did-f015)); a UUIDv4 is accepted as a legacy alias |
 | `address` | string | Yes | Agent's full AMP address |
 | `alias` | string | No | Human-readable name |
 | `public_key` | string | Yes | PEM-encoded public key |

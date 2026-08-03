@@ -79,7 +79,7 @@ Content-Type: application/json
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `agent_id` | string | Client-generated UUIDv4. If provided, the server MUST use this value as the agent's canonical identifier. If absent, the server MAY generate one. Clients SHOULD always provide this field to support offline-first initialization. |
+| `agent_id` | string | Client-generated UUIDv4, used as the agent's registration handle / legacy alias. If provided, the server MUST use this value; if absent, the server MAY generate one. Clients SHOULD always provide it for offline-first initialization. The agent's *canonical, self-certifying* identifier is the key-derived DID (see [02 - Identity](02-identity.md#canonical-identifier-did-f015)). |
 | `alias` | string | Human-friendly display name |
 | `scope.platform` | string | Platform (`github`, `gitlab`, etc.) |
 | `scope.repo` | string | Repository name |

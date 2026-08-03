@@ -281,7 +281,10 @@ The standardized wrapping format for non-verified content is:
 
 ### Trust Level Determination
 
-Providers and agents MUST classify incoming messages into one of three trust levels:
+Providers and agents MUST classify incoming messages by **signature** into one of these
+three base trust levels. When an identity provider is present, a valid identity attestation
+MAY further **upgrade** a `verified`/`external` message to `org-verified` — an optional
+enrichment layered on top, defined in [Identity Attestations](#identity-attestations-pluggable-enrichment--f015). The base classification below does not depend on attestations.
 
 | Level | Determination | Treatment |
 |-------|---------------|-----------|
@@ -297,6 +300,9 @@ Providers and agents MUST classify incoming messages into one of three trust lev
 3. IF signature is valid:
    a. IF sender is in the same tenant as recipient → trust = "verified"
    b. IF sender is in a different tenant or provider → trust = "external"
+4. (Optional enrichment) IF a valid identity attestation binds the sender's DID to a
+   trusted issuer's org/role claim → upgrade trust to "org-verified"
+   (see Identity Attestations). Absence of an attestation never lowers trust.
 ```
 
 ### Content Wrapping (Normative)
@@ -359,6 +365,58 @@ Providers MAY include a `security` field in the message's local metadata to prop
 | `verified_at` | string | ISO 8601 timestamp of when the signature was verified |
 
 This metadata allows agents to make informed trust decisions without re-verifying the signature.
+
+## Identity Attestations (Pluggable Enrichment) — F015
+
+AMP's intrinsic identity (a key-derived DID + Agent Card, signed messages, Identity
+Conflict Detection) is **self-sufficient**: messaging works with zero external identity
+provider. When an identity provider *is* present — the Agent Identity Protocol (AID),
+Microsoft Entra Agent ID, SPIFFE, a corporate IdP, or any Verifiable Credential issuer —
+it MAY **enrich** a message with an attestation about the sender's identity. This is
+optional and pluggable; AMP is identity-provider-agnostic.
+
+AMP defines the **carriage slot** and the **verification contract**, not a credential
+format. The attestation carried is a standard credential (W3C Verifiable Credential or
+SD-JWT VC).
+
+### Carriage
+
+A message MAY carry an identity attestation in an optional `identity` field of the local
+metadata (or envelope extension). The attestation is opaque to routing and does not affect
+signature verification of the message itself.
+
+### Verification Contract (Normative)
+
+When an attestation is present, the verifier MUST:
+
+1. **Discover the issuer** and fetch the issuer's public key (via the issuer's published
+   metadata / JWKS / `.well-known`).
+2. **Verify the attestation signature** against the issuer key.
+3. **Check status** — reject if expired or revoked (issuer status list / revocation).
+4. **Bind to the sender** — the attestation's `subject` MUST equal the sender's DID
+   (`02-identity.md#canonical-identifier-did-f015`). An attestation whose subject is not the
+   sender's DID MUST be ignored (treated as if absent). This prevents a stolen credential
+   from being replayed by a different key.
+5. **Check issuer trust** — the issuer MUST be trusted to vouch for the asserted scope
+   (org membership, role). Trust roots are provider-configured (allowlist / discovery /
+   trust registry), mirroring [06 - Federation](06-federation.md#trust-model).
+
+### Trust Tier
+
+A valid, sender-bound, trusted attestation upgrades the message to an **`org-verified`**
+trust tier, extending the classification in
+[Content Trust Classification](#content-trust-classification):
+
+| Level | Determination |
+|-------|---------------|
+| `org-verified` | Message signature valid **and** a valid attestation binds the sender's DID to a trusted issuer's org/role claim |
+| `verified` | Signature valid, same tenant, no (or no trusted) attestation |
+| `external` | Signature valid, different tenant/provider |
+| `untrusted` | Signature invalid or missing |
+
+**Graceful degradation:** absence of an attestation MUST NOT downgrade a message below what
+its signature earns — `org-verified` is an *upgrade* only. Providers MUST NOT require an
+attestation for delivery; AMP alone remains fully functional.
 
 ## Attachment Security
 
