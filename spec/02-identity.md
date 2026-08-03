@@ -167,6 +167,24 @@ The `id` is a client-generated UUIDv4, immutable from creation. Agent names are 
 
 **Key principle:** One keypair, multiple addresses. The same Ed25519 keypair is used with all providers.
 
+### Canonical Identifier: DID (F015)
+
+An agent's canonical identifier SHOULD be a **key-derived DID**, so the identifier is
+bound to the key and cannot drift from it:
+
+- **`did:key`** (RECOMMENDED default, self-certifying) — the identifier *is* the public
+  key, encoded as `did:key:z<base58btc(multicodec(0xed01) || raw-ed25519-pubkey)>`. Because
+  the id derives from the key, two agents cannot share an identity without sharing a keypair,
+  and the id cannot drift from the fingerprint. See
+  [did:key method](https://w3c-ccg.github.io/did-method-key/).
+- **`did:web`** (OPTIONAL) — for org-domain-rooted identities, resolved via a `.well-known`
+  document.
+
+Implementations MUST use the *thin* DID methods above (`did:key` is the key in a multibase
+wrapper; `did:web` is a URL) — **not** blockchain-anchored methods. The client-generated
+UUID MAY be retained as a legacy alias during migration, but the DID is the canonical,
+self-certifying principal. The Agent Card (below) carries the DID as its `id`.
+
 ## Multi-Provider Identity
 
 Agents MAY register with multiple providers to reach agents on different networks. Each registration creates a new address that shares the same underlying keypair.
