@@ -163,7 +163,7 @@ The `config.json` file contains the agent's core identity. The keypair is shared
 }
 ```
 
-The `id` is a client-generated UUIDv4, immutable from creation. Agent names are mutable labels; the `id` is the canonical unique identifier. The client MUST generate the UUID locally — the server accepts it, never assigns it. This ensures agents can be initialized offline without server coordination.
+The `id` is a client-generated UUIDv4, immutable from creation, used as a stable local handle and legacy identifier. Agent names are mutable labels. The client MUST generate the `id` locally — the server accepts it, never assigns it — so agents can be initialized offline without server coordination. The **canonical, self-certifying identifier is the key-derived DID** (see [Canonical Identifier: DID](#canonical-identifier-did-f015) below); the UUID is retained as a compatibility alias.
 
 **Key principle:** One keypair, multiple addresses. The same Ed25519 keypair is used with all providers.
 
@@ -347,7 +347,7 @@ An Agent Card is a signed, portable identity document that allows agents to veri
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `amp_agent_card` | string | Yes | Card format version (`"1.0"`) |
-| `id` | string | No | Client-generated UUIDv4 (immutable agent identifier) |
+| `id` | string | No | Canonical identifier — the key-derived DID (see [Canonical Identifier: DID](#canonical-identifier-did-f015)); a UUIDv4 is accepted as a legacy alias |
 | `address` | string | Yes | Agent's full AMP address |
 | `alias` | string | No | Human-readable name |
 | `public_key` | string | Yes | PEM-encoded public key |

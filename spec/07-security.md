@@ -281,7 +281,10 @@ The standardized wrapping format for non-verified content is:
 
 ### Trust Level Determination
 
-Providers and agents MUST classify incoming messages into one of three trust levels:
+Providers and agents MUST classify incoming messages by **signature** into one of these
+three base trust levels. When an identity provider is present, a valid identity attestation
+MAY further **upgrade** a `verified`/`external` message to `org-verified` — an optional
+enrichment layered on top, defined in [Identity Attestations](#identity-attestations-pluggable-enrichment--f015). The base classification below does not depend on attestations.
 
 | Level | Determination | Treatment |
 |-------|---------------|-----------|
@@ -297,6 +300,9 @@ Providers and agents MUST classify incoming messages into one of three trust lev
 3. IF signature is valid:
    a. IF sender is in the same tenant as recipient → trust = "verified"
    b. IF sender is in a different tenant or provider → trust = "external"
+4. (Optional enrichment) IF a valid identity attestation binds the sender's DID to a
+   trusted issuer's org/role claim → upgrade trust to "org-verified"
+   (see Identity Attestations). Absence of an attestation never lowers trust.
 ```
 
 ### Content Wrapping (Normative)
