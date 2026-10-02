@@ -96,6 +96,19 @@ This appendix provides a deployment hardening checklist for AMP provider impleme
 | Medium | Future timestamp rejection (60-second tolerance) | [07 - Security](07-security.md#replay-protection) |
 | Medium | Admin endpoint rate limits (quarantine, suspension, risk) | [08 - API](08-api.md#rate-limits) |
 
+## 9. Notification (only if `notify:v1` is advertised)
+
+| Severity | Item | Reference |
+|----------|------|-----------|
+| High | Route responses and `message.delivered` receipts carry `basis`; `delivered` is never reported more strongly than the route proves | [12 - Notification](12-notification.md#122-delivery-basis-normative-for-notifyv1) |
+| High | `GET /v1/messages/pending/count` returns no bodies and allows at least 1 request per 10 s per agent | [12 - Notification](12-notification.md#123-a-cheap-what-is-new-call-normative-for-notifyv1-providers-with-a-relay-queue) |
+| High | Ack is idempotent; WebSocket `message.ack`, `DELETE /pending/{id}` and `POST /pending/ack` are one transition | [12 - Notification](12-notification.md#124-acknowledgement-and-state-in-relay-mode-normative-for-notifyv1) |
+| High | WebSocket replay never includes an acknowledged message and marks frames `"replay": true` | [12 - Notification](12-notification.md#125-replay-and-duplicates-normative-for-notifyv1) |
+| High | Webhook retries re-check ack/delete state before each attempt and keep the same `X-AMP-Message-Id` | [12 - Notification](12-notification.md#125-replay-and-duplicates-normative-for-notifyv1) |
+| Medium | Pushed messages stay retrievable through `/pending` until acknowledged | [12 - Notification](12-notification.md#124-acknowledgement-and-state-in-relay-mode-normative-for-notifyv1) |
+| Medium | `read_receipt_sent` is `true` only if the receipt was delivered or retained for the sender | [12 - Notification](12-notification.md#124-acknowledgement-and-state-in-relay-mode-normative-for-notifyv1) |
+| Medium | A stale cursor returns `410 cursor_expired` | [12 - Notification](12-notification.md#123-a-cheap-what-is-new-call-normative-for-notifyv1-providers-with-a-relay-queue) |
+
 ---
 
 Previous: [Appendix A — Prompt Injection Patterns](appendix-a-injection-patterns.md) | Back to: [01 - Overview](01-overview.md)
