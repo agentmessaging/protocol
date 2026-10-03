@@ -52,7 +52,7 @@ Response: 200 OK
   "version": "amp/0.1",
   "public_key": "-----BEGIN PUBLIC KEY-----\n...",
   "fingerprint": "SHA256:xK4f...2jQ=",
-  "capabilities": ["federation", "webhooks", "websockets", "attachments"],
+  "capabilities": ["federation", "webhooks", "websockets", "attachments", "notify:v1"],
   "registration_modes": ["open"],
   "rate_limits": {
     "messages_per_minute": 60,
@@ -67,6 +67,8 @@ Response: 200 OK
 ```
 
 Useful for provider discovery, capability negotiation, and federation setup. Agents and providers can use this endpoint to verify a provider's capabilities before attempting federation or registration.
+
+When `"notify:v1"` is listed, the provider implements the optional notification extension in [12 - Notification and Wake](12-notification.md) (`GET /v1/messages/pending/count`, the `after` cursor, delivery `basis`, replay and retry rules). `"notify:longpoll"` additionally means `GET /v1/messages/pending` accepts `wait`.
 
 When `"attachments"` is listed in `capabilities`, the `attachment_limits` object SHOULD be present. Federating providers MUST check these limits before forwarding messages with attachments to ensure the recipient provider can accept them (see [06 - Federation](06-federation.md#capability-negotiation)).
 

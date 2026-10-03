@@ -119,6 +119,7 @@ The key difference from traditional messaging: **messages are stored locally**, 
 | 0.1.0 | 2025-01-30 | Initial draft |
 | 0.1.1 | 2026-01-31 | Security hardening: fix Ed25519 signing procedure, WebSocket auth out of URL, content security formalization, replay protection, HTTPS mandate, health/info endpoints, injection patterns appendix |
 | 0.1.2 | 2026-02-07 | File attachments: attachment schema in payload, upload/scan/download API, provider-side security scanning pipeline, federation attachment URL handling, capability negotiation |
+| 0.1.3 (proposed) | | Optional notification extension `notify:v1` (Section 12): notification principles, delivery `basis`, `pending/count` and `after` cursor, optional long-poll, ack/read semantics in relay mode, replay and webhook-retry rules |
 
 ---
 

@@ -155,7 +155,7 @@ The server MUST close the connection if:
 
 ### Acknowledgment
 
-Agents SHOULD acknowledge receipt:
+Agents SHOULD acknowledge receipt (a provider that advertises `notify:v1` treats this frame, `DELETE /v1/messages/pending/{id}` and `POST /v1/messages/pending/ack` as the same idempotent transition, and marks replayed frames `"replay": true`; see [12 - Notification and Wake](12-notification.md#124-acknowledgement-and-state-in-relay-mode-normative-for-notifyv1)):
 
 ```json
 {
@@ -325,6 +325,8 @@ Response:
 }
 ```
 
+> **Polling cheaply:** A provider that advertises `notify:v1` also offers `GET /v1/messages/pending/count`, an `after=<cursor>` parameter on this endpoint and, optionally, long-poll. See [12 - Notification and Wake](12-notification.md#123-a-cheap-what-is-new-call-normative-for-notifyv1-providers-with-a-relay-queue).
+
 > **Note:** The relay queue's `expires_at` is computed as `min(envelope.expires_at, queued_at + 7days)` if the envelope field is set, or `queued_at + 7days` otherwise.
 
 ### Acknowledging Pickup
@@ -457,6 +459,8 @@ When the message is delivered, the sender receives:
   }
 }
 ```
+
+A provider that advertises `notify:v1` adds `basis` (`mailbox_written`, `socket_written`, `webhook_2xx` or `queued`) to the receipt and to the route response, so the sender knows what "delivered" proves. See [12 - Notification and Wake](12-notification.md#122-delivery-basis-normative-for-notifyv1).
 
 ## Read Receipts
 

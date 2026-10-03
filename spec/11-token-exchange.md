@@ -308,4 +308,4 @@ Auth servers MAY use the provider resolution endpoint (`GET /v1/agents/resolve/{
 
 ---
 
-Previous: [10 - Local Bus](10-local-bus.md) | Next: [Appendix A - Injection Patterns](appendix-a-injection-patterns.md)
+Previous: [10 - Local Bus](10-local-bus.md) | Next: [12 - Notification and Wake](12-notification.md)
