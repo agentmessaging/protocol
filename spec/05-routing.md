@@ -232,7 +232,7 @@ def verify_webhook(payload, signature, secret, timestamp):
 
 #### Attachments in Webhook Payloads
 
-When delivering a message with attachments via webhook, the `payload` MUST include the full `attachments` array with all metadata fields (including `url` download links). Webhook payloads contain attachment **metadata only** — file content is NOT included in the webhook body. Recipients download attachment files separately using the `url` field.
+When delivering a message with attachments via webhook, the `payload` MUST include the full `attachments` array with all metadata fields (including `url` download links, where the attachment has one). Webhook payloads contain attachment **metadata only** — file content is NOT included in the webhook body. Recipients download attachment files separately using the `url` field.
 
 ### Webhook Response
 
@@ -299,7 +299,7 @@ When WebSocket and webhook both fail, messages go to the relay queue.
 
 > **Note:** Relay queues MAY be keyed by agent name (local part) or full address. Providers SHOULD normalize to agent name for consistent lookup, especially when the agent has not yet registered a full address.
 
-> **Attachments:** Attachment download URLs MUST remain valid for at least the relay queue TTL (7 days). When a relay message expires, the provider MAY delete the associated attachment files.
+> **Attachments:** `provider` attachment download URLs MUST remain valid for at least the relay queue TTL (7 days). When a relay message expires, the provider MAY delete the associated attachment files.
 
 ### Pickup Endpoint
 
@@ -419,7 +419,7 @@ async def deliver_local(message, recipient):
 
 ### Messages with Attachments
 
-When routing a message that contains attachments, the provider MUST perform the following checks before delivery:
+When routing a message that contains `provider` attachments (an attachment with no `storage` field is a `provider` attachment), the provider MUST perform the following checks before delivery. For `afp` attachments ([04 - Messages](04-messages.md#afp-attachments)) the provider only validates the object's shape (required fields, `digest` format, `ref` syntax) and does not fetch or scan the file; checks 1 to 5 do not apply to them:
 
 1. Verify that all attachments have a `scan_status` of `clean` or `suspicious` (not `pending` or `rejected`).
 2. Verify that all attachment IDs belong to the authenticated sender.

@@ -7,9 +7,37 @@
   "$defs": {
     "attachment_object": {
       "title": "Attachment Object",
+      "description": "An attachment in the message payload. If 'storage' is 'afp' it is an AFP reference; otherwise (storage absent or 'provider') it is a provider-hosted attachment. The 10-attachment, 25 MB and 100 MB limits apply to provider attachments only.",
+      "type": "object",
+      "if": {
+        "properties": {
+          "storage": {
+            "const": "afp"
+          }
+        },
+        "required": [
+          "storage"
+        ]
+      },
+      "then": {
+        "$ref": "#/$defs/afp_attachment"
+      },
+      "else": {
+        "$ref": "#/$defs/provider_attachment"
+      }
+    },
+    "provider_attachment": {
+      "title": "Provider Attachment Object",
       "description": "An attachment as it appears in the message payload attachments array. Contains provider-assigned metadata including the signed download URL and security scan result.",
       "type": "object",
       "properties": {
+        "storage": {
+          "type": "string",
+          "description": "Attachment storage kind. 'provider' (the default when absent) is the provider-hosted upload flow described here.",
+          "enum": [
+            "provider"
+          ]
+        },
         "id": {
           "type": "string",
           "description": "Provider-assigned attachment ID. Format: att_<unix_timestamp>_<random_hex>. Must not contain path separators, '..', or null bytes.",
@@ -67,6 +95,65 @@
         "scan_status",
         "uploaded_at",
         "expires_at"
+      ],
+      "additionalProperties": false
+    },
+    "afp_attachment": {
+      "title": "AFP Attachment Object",
+      "description": "An attachment with storage 'afp': a reference to a file in an Agent Files Protocol space. No provider upload, scan, signed URL or expiry; those live in the object's AFP manifest. See AMP spec section 04 (AFP Attachments).",
+      "type": "object",
+      "properties": {
+        "storage": {
+          "type": "string",
+          "description": "Attachment storage kind. Must be 'afp' for this shape.",
+          "enum": [
+            "afp"
+          ]
+        },
+        "filename": {
+          "type": "string",
+          "description": "Original filename. Only characters in [a-zA-Z0-9._-] are permitted, same as provider attachments.",
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[a-zA-Z0-9._-]+$"
+        },
+        "content_type": {
+          "type": "string",
+          "description": "MIME type of the file."
+        },
+        "size": {
+          "type": "integer",
+          "description": "File size in bytes. Not capped at 25 MB; the AFP space sets its own limits.",
+          "minimum": 0
+        },
+        "digest": {
+          "type": "string",
+          "description": "Content hash in the format sha256:<lowercase_hex>. The recipient must verify it on fetch.",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "ref": {
+          "type": "string",
+          "description": "AFP reference: afp://<space>/<path>. Space is lowercase alphanumeric with hyphens (max 63 chars). Path uses [a-zA-Z0-9._/-], no '..', no leading '/', no empty segments, max 512 chars.",
+          "pattern": "^afp://[a-z0-9][a-z0-9-]{0,62}/(?!/)(?!.*\\.\\.)(?!.*//)[a-zA-Z0-9._/-]{1,512}$"
+        },
+        "endpoint": {
+          "type": "string",
+          "description": "Optional hint for where the space's store lives, for a recipient with no configuration for the space.",
+          "format": "uri"
+        },
+        "url": {
+          "type": "string",
+          "description": "Optional time-limited download link minted by the sender. Short-lived; not part of the object's identity.",
+          "format": "uri"
+        }
+      },
+      "required": [
+        "storage",
+        "filename",
+        "content_type",
+        "size",
+        "digest",
+        "ref"
       ],
       "additionalProperties": false
     },
@@ -165,11 +252,10 @@
         },
         "attachments": {
           "type": "array",
-          "description": "File attachments referenced by the message. Maximum 10 attachments per message, 100 MB total size. Attachment metadata is included in payload_hash for signature integrity.",
+          "description": "File attachments referenced by the message. Maximum 10 attachments per message, 100 MB total size. Attachment metadata is included in payload_hash for signature integrity. Provider attachments are limited to 10 per message and 100 MB total; AFP attachments do not count toward those limits.",
           "items": {
             "$ref": "#/$defs/attachment_object"
-          },
-          "maxItems": 10
+          }
         }
       },
       "required": [

@@ -422,6 +422,8 @@ attestation for delivery; AMP alone remains fully functional.
 
 Messages MAY include file attachments (see [04 - Messages](04-messages.md#attachments)). Because attachments carry external file content into the agent's context, providers MUST scan all uploaded files before allowing them to be routed.
 
+This requirement applies to `provider` attachments. The provider never sees the bytes of an `afp` attachment ([04 - Messages](04-messages.md#afp-attachments)), so it cannot scan it. The recipient MUST verify the `digest` on fetch, MUST treat the file with the same trust as the parent message, and reads the scan result from the object's AFP manifest. The rules in [Prompt Injection in Attachments](#prompt-injection-in-attachments) apply to both kinds.
+
 ### Scanning Pipeline
 
 Providers MUST implement at minimum the **Required** scanning steps below before marking an attachment as `clean`. Providers that lack antivirus or injection scanning infrastructure MUST still implement the Required steps and MAY report `scan_status: "basic_clean"` to indicate that only basic checks were performed (no AV scan). Recipients SHOULD treat `basic_clean` the same as `clean` but MAY apply additional caution.

@@ -221,6 +221,8 @@ When forwarding messages with attachments across providers, special handling is 
 
 ### Cross-Provider Attachment URLs
 
+This section and the next two apply to `provider` attachments. An `afp` attachment ([04 - Messages](04-messages.md#afp-attachments)) is forwarded unchanged, and the receiving provider does not host or rewrite it.
+
 - The originating provider (Provider A) includes its own signed download URLs in the attachment metadata.
 - The receiving provider (Provider B) MUST NOT rewrite, proxy, or modify attachment URLs by default. Recipients download directly from the originating provider.
 - The originating provider MUST ensure that attachment URLs are publicly accessible (signed URLs with embedded authentication). URLs MUST NOT require the recipient to authenticate with the originating provider.
@@ -233,6 +235,7 @@ Before forwarding a message with attachments to another provider, the sender's p
 
 - If the recipient provider does **not** list `"attachments"` in its capabilities, the sender's provider MUST reject the original send with HTTP status `422 Unprocessable Entity` and error code `attachments_not_supported`.
 - If the recipient provider lists `"attachments"` in its capabilities and provides `attachment_limits` in its `/v1/info` response, the sender's provider MUST verify that each attachment's size does not exceed the recipient's `max_attachment_size` and that the total attachment size does not exceed `max_total_attachment_size`. If limits would be exceeded, the sender's provider MUST reject the original send with error code `attachment_too_large`. When the recipient provider's `/v1/info` response does not include `attachment_limits`, the sender's provider MUST assume the protocol defaults (25 MB per file, 100 MB total, 10 attachments per message).
+- If the message carries an `afp` attachment and the recipient provider does not list `"attachments:afp"`, the sender's provider MUST reject the original send with HTTP status `422 Unprocessable Entity` and error code `attachments_not_supported`. The size and count limits above are not checked for `afp` attachments.
 - Providers MUST NOT strip attachments and deliver a partial message. The message is either delivered in full or rejected.
 
 ### Attachment URL Lifetime

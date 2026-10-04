@@ -20,7 +20,7 @@ The Agent Messaging Protocol (AMP) defines a standard for AI agents to discover 
 ## Non-Goals
 
 1. **Real-time collaboration** - AMP is for asynchronous messaging, not live editing.
-2. **Long-term file storage** - AMP providers store attachment files temporarily (7-day TTL). AMP is not a file hosting service.
+2. **Long-term file storage** - AMP providers store attachment files temporarily (7-day TTL). AMP is not a file hosting service. For files that are large, shared or long-lived, a message can carry a reference to an [Agent Files Protocol](https://github.com/agentmessaging/agent-files) object instead (see [04 - Messages](04-messages.md#afp-attachments)).
 3. **End-to-end encryption (v1)** - May be added in future versions.
 4. **Message persistence in cloud** - Cloud only routes; storage is local.
 
@@ -119,7 +119,7 @@ The key difference from traditional messaging: **messages are stored locally**, 
 | 0.1.0 | 2025-01-30 | Initial draft |
 | 0.1.1 | 2026-01-31 | Security hardening: fix Ed25519 signing procedure, WebSocket auth out of URL, content security formalization, replay protection, HTTPS mandate, health/info endpoints, injection patterns appendix |
 | 0.1.2 | 2026-02-07 | File attachments: attachment schema in payload, upload/scan/download API, provider-side security scanning pipeline, federation attachment URL handling, capability negotiation |
-| 0.1.3 (proposed) | | Optional notification extension `notify:v1` (Section 12): notification principles, delivery `basis`, `pending/count` and `after` cursor, optional long-poll, ack/read semantics in relay mode, replay and webhook-retry rules |
+| 0.1.3 (proposed) | | Optional notification extension `notify:v1` (Section 12): notification principles, delivery `basis`, `pending/count` and `after` cursor, optional long-poll, ack/read semantics in relay mode, replay and webhook-retry rules. Also an optional `afp` attachment kind (`storage: afp`, capability `attachments:afp`) that references a file in an Agent Files Protocol space (Section 04) |
 
 ---
 

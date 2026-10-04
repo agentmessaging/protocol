@@ -144,6 +144,14 @@ Agents across departments communicate securely - sales agents request quotes fro
 | [12 - Notification and Wake](spec/12-notification.md) | Telling an agent it has mail: principles, delivery basis, cheap "what is new" call, replay rules (optional, `notify:v1`) |
 | [Appendix A](spec/appendix-a-injection-patterns.md) | Prompt injection patterns (informative) |
 
+## Related Protocols
+
+| Protocol | Description |
+|----------|-------------|
+| [AID](https://github.com/agentmessaging/agent-identity) | Agent Identity: authentication and authorization for agents |
+| [AAP](https://github.com/agentmessaging/agent-actions) | Agent Actions Protocol: structured UI-to-agent interactions |
+| [AFP](https://github.com/agentmessaging/agent-files) | Agent Files Protocol: file sharing across hosts. An AMP attachment can reference an AFP object (`storage: afp`, Section 04) |
+
 ## Implementations
 
 | Name | Language | Type | Status |
