@@ -48,7 +48,8 @@ This appendix provides a deployment hardening checklist for AMP provider impleme
 | High | Quarantine active for critical-severity findings | [07 - Security](07-security.md#message-quarantine) |
 | High | Default severity-to-verdict mapping implemented | [07 - Security](07-security.md#default-severity-to-verdict-mapping) |
 | High | Multi-message window scanning active | [07 - Security](07-security.md#multi-message-window-scanning) |
-| Medium | Attachment scanning pipeline operational | [07 - Security](07-security.md#scanning-pipeline) |
+| Medium | Attachment scanning pipeline operational (`provider` attachments) | [07 - Security](07-security.md#scanning-pipeline) |
+| Low | If `attachments:afp` is advertised: `afp` attachments are shape-validated only, never fetched, scanned or rewritten | [04 - Messages](04-messages.md#afp-attachments) |
 | Medium | Credential redaction in audit output | [07 - Security](07-security.md#abuse-prevention) |
 
 ## 5. Network

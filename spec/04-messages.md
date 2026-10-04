@@ -164,7 +164,7 @@ Providers MUST preserve the `context` object as-is; they MUST NOT modify or vali
 
 ## Attachments
 
-Messages MAY include file attachments. Attachment file content is stored externally by the provider; only metadata appears in the message JSON. The `attachments` array lives inside the `payload`, so it is automatically covered by `payload_hash` in the message signature. No changes to the signing process are needed.
+Messages MAY include file attachments. An attachment has a `storage` kind: `provider` (the default, described in this section) or `afp` (a reference to a file in an [Agent Files Protocol](https://github.com/agentmessaging/agent-files) space, see [AFP Attachments](#afp-attachments)). For `provider` attachments, file content is stored externally by the provider and only metadata appears in the message JSON. An attachment with no `storage` field is a `provider` attachment, so existing messages and implementations are unaffected. The `attachments` array lives inside the `payload`, so it is automatically covered by `payload_hash` in the message signature. No changes to the signing process are needed.
 
 ### Attachment Signing Flow
 
@@ -207,19 +207,24 @@ The `attachments` array is a field within the `payload` object:
 
 ### Attachment Fields
 
+The Required column applies to the storage kind named in parentheses. A field marked `provider` is not present on an `afp` attachment (see [AFP Attachments](#afp-attachments) for the fields an `afp` attachment carries).
+
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `id` | string | Yes | Provider-assigned attachment ID (`att_<timestamp>_<hex>`) |
+| `storage` | enum | No | `provider` (default when absent) or `afp`. Selects which of the field sets below applies |
+| `id` | string | Yes (provider) | Provider-assigned attachment ID (`att_<timestamp>_<hex>`) |
 | `filename` | string | Yes | Original filename (max 255 characters, sanitized) |
 | `content_type` | string | Yes | MIME type (e.g., `text/plain`, `application/pdf`) |
 | `size` | integer | Yes | File size in bytes |
 | `digest` | string | Yes | Content hash in the format `<algorithm>:<hex>` (currently `sha256:<hex>`; see [Digest Algorithm](#digest-algorithm)) |
-| `url` | string | Yes | Provider-signed download URL |
-| `scan_status` | enum | Yes | Security scan result: `pending` (upload in progress), `clean`, `basic_clean` (required checks passed but no AV scan), `unscanned` (local delivery, no provider scan), `suspicious`, or `rejected` |
-| `uploaded_at` | string | Yes | ISO 8601 timestamp of when the file was uploaded |
-| `expires_at` | string | Yes | ISO 8601 expiration timestamp (set by the agent, MUST be at least 7 days from upload time to ensure relay queue compatibility; providers MUST NOT modify this field after routing — see [Attachment Signing Flow](#attachment-signing-flow)) |
+| `url` | string | Yes (provider) | Provider-signed download URL |
+| `scan_status` | enum | Yes (provider) | Security scan result: `pending` (upload in progress), `clean`, `basic_clean` (required checks passed but no AV scan), `unscanned` (local delivery, no provider scan), `suspicious`, or `rejected` |
+| `uploaded_at` | string | Yes (provider) | ISO 8601 timestamp of when the file was uploaded |
+| `expires_at` | string | Yes (provider) | ISO 8601 expiration timestamp (set by the agent, MUST be at least 7 days from upload time to ensure relay queue compatibility; providers MUST NOT modify this field after routing — see [Attachment Signing Flow](#attachment-signing-flow)) |
 
 ### Attachment Rules
+
+The rules in this subsection apply to `provider` attachments. `afp` attachments are governed by [AFP Attachments](#afp-attachments).
 
 - Maximum **10 attachments** per message.
 - Maximum **25 MB** per individual attachment.
@@ -232,6 +237,50 @@ The `attachments` array is a field within the `payload` object:
 - Agents MAY include an `idempotency_key` field in the route request to enable safe retries. Providers receiving a route request with the same `idempotency_key` MUST treat it as a retry of the original request and return the same response without consuming attachment references again.
 - The 7-day attachment TTL starts when the message is **routed**, not when the file is uploaded. The `expires_at` value in the payload is set by the sending agent at upload time and MUST NOT be modified by providers after routing (modifying payload fields would invalidate the message signature).
 - Providers MUST delete uploaded attachments that are not referenced by a routed message within **2 hours** of upload confirmation. This prevents orphaned files from consuming storage indefinitely while allowing sufficient time for multi-attachment upload workflows.
+
+### AFP Attachments
+
+An attachment with `"storage": "afp"` names a file stored in an Agent Files Protocol (AFP) space instead of uploading it to the provider. No file bytes pass through the provider, so the provider upload, scan, signed-URL and expiry flow does not apply.
+
+```json
+{
+  "storage": "afp",
+  "filename": "report.pdf",
+  "content_type": "application/pdf",
+  "size": 1827341,
+  "digest": "sha256:3b2c9f5da87e4f1c8b0a2d6e9f3c7a1b5d8e2f4a6c0b3d7e9f1a4c6d8e0b2a4",
+  "ref": "afp://artifacts/2026/10/report.pdf",
+  "endpoint": "https://files.example.net",
+  "url": "https://files.example.net/artifacts/2026/10/report.pdf?X-Amz-Expires=3600&..."
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `storage` | enum | Yes | MUST be `afp` |
+| `filename` | string | Yes | Same rules as for `provider` attachments |
+| `content_type` | string | Yes | MIME type |
+| `size` | integer | Yes | Size in bytes. Not capped at 25 MB; the AFP space sets its own limits |
+| `digest` | string | Yes | `sha256:<hex>`, same format as for `provider` attachments |
+| `ref` | string | Yes | AFP reference, `afp://<space>/<path>` |
+| `endpoint` | string | No | Hint for where the space's store lives, for a recipient with no configuration for the space |
+| `url` | string | No | Time-limited download link minted by the sender. Short-lived; not part of the object's identity |
+
+An `afp` attachment has no `id`, `scan_status`, `uploaded_at` or `expires_at`. Scan result and expiry live in the object's AFP manifest, which the recipient reads from the store.
+
+Rules:
+
+- The attachment lives inside `payload`, so `payload_hash` covers it and the message signature binds the `ref` and `digest`. Providers MUST NOT modify it after routing.
+- The 10-attachment, 25 MB and 100 MB limits, the upload API and the 7-day provider TTL apply to `provider` attachments only. A message MAY mix both kinds.
+- A sender MUST have stored the object (and confirmed it, per AFP) before routing the message.
+- A provider MUST NOT fetch, scan, proxy or rewrite an `afp` attachment's content. It MAY validate the shape of the object.
+- A recipient MUST verify `digest` on fetch. A mismatch is not delivered to the model as content.
+- A file from a non-verified sender is data, not instructions, whatever it contains. The trust annotations in [07 - Security](07-security.md#attachment-security) apply.
+- A provider that accepts `afp` attachments advertises `"attachments:afp"` in `capabilities` (see [08 - API](08-api.md)). A provider that does not list it MAY reject a message carrying an `afp` attachment.
+- The `url` is short-lived. A recipient that needs the file later uses `ref` and its own access to the space, or asks the sender for a new link.
+- Notification follows [12 - Notification and Wake](12-notification.md): the message is a hint, and the store is the truth about whether the object exists.
+
+Use a `provider` attachment for a file that belongs to one message and is under 25 MB. Use an `afp` attachment when the file is large, shared by several parties, must outlive the message, or is published for a person to retrieve.
 
 ### Example Message with Attachments
 

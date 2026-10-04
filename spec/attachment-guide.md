@@ -13,6 +13,8 @@ This guide consolidates all attachment-related information from the AMP specific
 
 AMP messages MAY include file attachments. Attachment **file content** is stored externally by the provider (e.g., in S3 or equivalent object storage); only **metadata** appears in the message JSON. The `attachments` array lives inside the `payload` object, so it is automatically covered by the `payload_hash` in the message signature. No changes to the signing process are needed -- the standard canonical string format applies.
 
+> **Scope:** This guide covers `provider` attachments (the default, with no `storage` field). A message can also carry an `afp` attachment, a reference to a file in an Agent Files Protocol space: no upload, scan or provider TTL, and no `id`, `scan_status`, `uploaded_at` or `expires_at`. See [04 - Messages](04-messages.md#afp-attachments).
+
 **When to use attachments:**
 
 - Sending log files, screenshots, reports, or data files alongside a message.
@@ -206,6 +208,8 @@ The `attachments` array is a field within the `payload` object:
 ```
 
 ### Field Reference
+
+The table lists the fields of a `provider` attachment. The `afp` form has a different field set, see [04 - Messages](04-messages.md#afp-attachments).
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|

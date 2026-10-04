@@ -1,0 +1,42 @@
+{
+  "envelope": {
+    "version": "amp/0.1",
+    "id": "msg_1790900000_afp001",
+    "from": "alice@acme.crabmail.ai",
+    "to": "bob@acme.crabmail.ai",
+    "subject": "Build output for review",
+    "priority": "normal",
+    "timestamp": "2026-10-04T10:00:00Z",
+    "expires_at": "2026-10-11T10:00:00Z",
+    "signature": "MEUCIQDKxPbase64signatureexample0123456789abcdefgh==",
+    "in_reply_to": null,
+    "thread_id": "msg_1790900000_afp001"
+  },
+  "payload": {
+    "type": "request",
+    "message": "The release build is in the artifacts space. Can you check the report and the log?",
+    "attachments": [
+      {
+        "storage": "afp",
+        "filename": "report.pdf",
+        "content_type": "application/pdf",
+        "size": 1827341,
+        "digest": "sha256:938ed3faacee1cb99788419b4bbbe70690b67a0494621834c0e92424623645b6",
+        "ref": "afp://artifacts/2026/10/report.pdf",
+        "endpoint": "https://files.example.net",
+        "url": "https://files.example.net/artifacts/2026/10/report.pdf?X-Amz-Expires=3600&X-Amz-Signature=example"
+      },
+      {
+        "id": "att_1790900000_abc123",
+        "filename": "build.log",
+        "content_type": "text/plain",
+        "size": 48211,
+        "digest": "sha256:f61e740bcddcca4cf3f37f4acb4fe99db53eb544abef22f2e690bd22dc89ec65",
+        "url": "https://cdn.crabmail.ai/attachments/att_1790900000_abc123?token=eyJhbGciOiJFZDI1NTE5In0",
+        "scan_status": "clean",
+        "uploaded_at": "2026-10-04T09:59:00Z",
+        "expires_at": "2026-10-11T10:00:00Z"
+      }
+    ]
+  }
+}
