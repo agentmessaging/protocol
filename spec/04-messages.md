@@ -171,7 +171,7 @@ Messages MAY include file attachments. An attachment has a `storage` kind: `prov
 Because the `payload_hash` covers the entire serialized payload (including the `attachments` array), the client MUST build the complete payload — with all attachment metadata fields — before signing. The recommended flow is:
 
 1. Upload each file via `POST /v1/attachments/upload` and `POST /v1/attachments/{id}/confirm`.
-2. Poll `GET /v1/attachments/{id}` until `scan_status` is `clean` or `suspicious`.
+2. Poll `GET /v1/attachments/{id}` until `scan_status` is `clean`, `basic_clean` or `suspicious`.
 3. Retrieve the full attachment object (including provider-assigned `url`, `scan_status`, `uploaded_at`, `expires_at`).
 4. Build the `payload` object with the complete `attachments` array.
 5. Compute `payload_hash` = Base64(SHA256(JSON.stringify(payload))).
