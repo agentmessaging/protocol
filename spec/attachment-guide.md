@@ -219,13 +219,13 @@ The table lists the fields of a `provider` attachment. The `afp` form has a diff
 | `size` | integer | Yes | File size in bytes. |
 | `digest` | string | Yes | Content hash: `sha256:<lowercase_hex>`. See [Digest Algorithm](#digest-algorithm). |
 | `url` | string | Yes | Provider-signed download URL. No authentication required for cross-provider access. |
-| `scan_status` | enum | Yes | Security scan result: `pending`, `clean`, `suspicious`, or `rejected`. |
+| `scan_status` | enum | Yes | Security scan result: `pending`, `clean`, `basic_clean` (required checks passed, no AV scan), `unscanned` (local delivery only), `suspicious`, or `rejected`. |
 | `uploaded_at` | string | Yes | ISO 8601 timestamp of when the file was uploaded. |
 | `expires_at` | string | Yes | ISO 8601 expiration timestamp. MUST be at least 7 days from upload time. |
 
 ### Constraints
 
-- `scan_status` in routed message payloads MUST be `clean` or `suspicious` -- never `pending` or `rejected`. The `pending` status is valid only in upload API responses before routing.
+- `scan_status` in routed message payloads MUST be `clean`, `basic_clean`, or `suspicious` -- never `pending`, `unscanned`, or `rejected`. The `pending` status is valid only in upload API responses before routing. The `unscanned` status is valid only for local filesystem delivery. This matches [04 - Messages](04-messages.md).
 - `filename` MUST NOT contain path separators (`/`, `\`), null bytes, or control characters. Only characters in `[a-zA-Z0-9._-]` are allowed. Reserved OS names (`CON`, `PRN`, `AUX`, `NUL`, `COM1`-`COM9`, `LPT1`-`LPT9`) are forbidden. Leading/trailing dots and spaces are stripped. Double-encoded path separators (e.g., `%2F`) MUST be rejected.
 - `id` follows format `att_<unix_timestamp>_<random_hex>`. IDs containing `/`, `\`, `..`, or null bytes MUST be rejected to prevent path traversal.
 - Each attachment ID MUST be referenced by at most one message. Providers MUST reject a `/route` request that references an attachment ID already associated with a previously routed message.
