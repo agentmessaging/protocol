@@ -23,6 +23,7 @@ AMP security is built on three principles:
 | Unauthorized access | API key authentication; agent-scoped permissions |
 | Provider compromise | Messages stored locally, not on provider |
 | Malicious file uploads | Provider-side scanning; blocked executables; digest verification |
+| Injected instructions reaching tools | Content wrapping and trust levels on the wire; [Content Authority](#content-authority-normative) in the agent runtime |
 
 ### Out of Scope (v1)
 
@@ -336,6 +337,25 @@ Messages from external or untrusted sources MUST be treated as data, not instruc
 
 See [Appendix A - Injection Patterns](appendix-a-injection-patterns.md) for an informative reference of common injection categories and example patterns. Implementations SHOULD maintain updated pattern databases beyond the examples provided.
 
+### Content Authority (Normative)
+
+Prompt injection becomes harm when text read by a model turns into an action: *untrusted content → model reasoning → tool call → real change* (a database write, a shell command, a payment, a message sent in someone's name). AMP cannot stop a model from being persuaded, but it can say whose word is allowed to start an action. These rules sit on top of [Content Wrapping](#content-wrapping-normative) and do not replace it.
+
+**Authority comes from the principal, not from the text.** An action is authorized by who asked for it (the agent's operator, its own policy, or an approval from a verified principal), never by what a piece of content says.
+
+1. **No authority from external or untrusted content.** Content from `external` or `untrusted` messages, and content derived from it (summaries, extracted fields, tool output that quotes it), MUST NOT by itself authorize a state-changing action. An agent MAY read it, reason about it and propose an action; carrying out that action needs authority from a source the recipient controls.
+2. **A policy check between the model and the action.** An agent that can invoke state-changing tools (write, delete, execute, send, spend, change permissions) MUST decide whether each such call is allowed in code the model cannot rewrite, **outside the model's own output**, using at least: the call's origin (which message or content it traces to), its trust level, and the tool's class. A model's statement that "this is safe" is not a policy decision.
+3. **Taint travels.** Content derived from several sources SHOULD be treated at the **lowest** trust level among them. An agent SHOULD keep the origin of each piece of context so that rule 2 can use it.
+4. **Same tenant is not unconditional.** `verified` messages are trusted for delivery, not for any action: a compromised or confused peer in the same tenant is still a peer. Agents SHOULD apply the rule 2 policy to actions that trace to `verified` content as well, with a more permissive policy if the operator chooses.
+5. **Approval is out of band.** When policy requires approval, it MUST be requested from the operator or another verified principal through a channel the untrusted content cannot answer on its own behalf (not a reply in the same thread that the content itself could provoke).
+6. **Attachments follow the same rules**, in addition to [Prompt Injection in Attachments](#prompt-injection-in-attachments).
+
+What AMP does and does not do here:
+
+- AMP carries the facts rules 1 to 4 need: the signature, the trust level, the `<external-content>` wrapper and the security metadata, and, optionally, an [identity attestation](#identity-attestations-pluggable-enrichment--f015).
+- Enforcing rules 1 to 5 happens in the agent's runtime, not on the wire, so a provider cannot verify it. They bind agent implementations; an agent that does not implement them is non-conforming for any deployment where it holds state-changing tools.
+- Which tools count as state-changing, and what each trust level may do, is local policy. This section does not define a tool or capability vocabulary.
+
 ### Security Metadata
 
 Providers MAY include a `security` field in the message's local metadata to propagate trust decisions to downstream consumers:
@@ -373,7 +393,10 @@ Conflict Detection) is **self-sufficient**: messaging works with zero external i
 provider. When an identity provider *is* present — the Agent Identity Protocol (AID),
 Microsoft Entra Agent ID, SPIFFE, a corporate IdP, or any Verifiable Credential issuer —
 it MAY **enrich** a message with an attestation about the sender's identity. This is
-optional and pluggable; AMP is identity-provider-agnostic.
+optional and pluggable; AMP is identity-provider-agnostic. AMP names no recommended or
+default provider, and will not: which issuers a deployment trusts is its own configuration
+(Verification Contract, step 5), and a provider that issues a standard credential bound to
+the sender's DID (an on-chain attestation service included) works the same as any other.
 
 AMP defines the **carriage slot** and the **verification contract**, not a credential
 format. The attestation carried is a standard credential (W3C Verifiable Credential or
