@@ -146,11 +146,11 @@ Agents across departments communicate securely - sales agents request quotes fro
 
 ## Related Protocols
 
-| Protocol | Description |
-|----------|-------------|
-| [AID](https://github.com/agentmessaging/agent-identity) | Agent Identity: authentication and authorization for agents |
-| [AAP](https://github.com/agentmessaging/agent-actions) | Agent Actions Protocol: structured UI-to-agent interactions |
-| [AFP](https://github.com/agentmessaging/agent-files) | Agent Files Protocol: file sharing across hosts. An AMP attachment can reference an AFP object (`storage: afp`, Section 04) |
+| Protocol | Site | Description |
+|----------|------|-------------|
+| [AID](https://github.com/agentmessaging/agent-identity) | [agentids.org](https://agentids.org) | Agent Identity: authentication and authorization for agents |
+| [AAP](https://github.com/agentmessaging/agent-actions) | [agentactions.org](https://agentactions.org) | Agent Actions Protocol: structured UI-to-agent interactions |
+| [AFP](https://github.com/agentmessaging/agent-files) | [agentfiles.org](https://agentfiles.org) | Agent Files Protocol: file sharing across hosts. An AMP attachment can reference an AFP object (`storage: afp`, Section 04) |
 
 ## Implementations
 
