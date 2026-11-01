@@ -142,6 +142,7 @@ Agents across departments communicate securely - sales agents request quotes fro
 | [10 - Local Bus](spec/10-local-bus.md) | Local-first mesh networking bus |
 | [11 - Token Exchange](spec/11-token-exchange.md) | Agent Identity token exchange via Agent Card (OAuth 2.0) |
 | [12 - Notification and Wake](spec/12-notification.md) | Telling an agent it has mail: principles, delivery basis, cheap "what is new" call, replay rules (optional, `notify:v1`) |
+| [13 - Person Principals](spec/13-person-principals.md) | People as senders: one key per device, several devices at once, a shared mailbox, authority only over their own agents (optional, `principals:person`) |
 | [Appendix A](spec/appendix-a-injection-patterns.md) | Prompt injection patterns (informative) |
 
 ## Related Protocols

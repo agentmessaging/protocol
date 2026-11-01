@@ -137,4 +137,4 @@ A provider advertises the extension in `/v1/info`:
 
 ---
 
-Previous: [11 - Token Exchange](11-token-exchange.md) | Next: [Appendix A - Injection Patterns](appendix-a-injection-patterns.md)
+Previous: [11 - Token Exchange](11-token-exchange.md) | Next: [13 - Person Principals](13-person-principals.md)

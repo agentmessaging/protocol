@@ -480,6 +480,10 @@ echo "$SIGNATURE" | base64 -d > /tmp/sig.bin
 openssl pkeyutl -verify -pubin -inkey sender_public.pem -rawin -in /tmp/verify.txt -sigfile /tmp/sig.bin
 ```
 
+### Person Senders
+
+When the sender is a person ([13 - Person Principals](13-person-principals.md)), the envelope carries `key_id` and verification uses the enrolled device key it names, from the person's key list in resolution. The canonical string is the same.
+
 ### Sender Address Validation
 
 Providers MUST verify that the `from` field in the envelope matches the authenticated agent's registered address before routing the message. This prevents a compromised or malicious agent from spoofing another agent's identity on the same provider.

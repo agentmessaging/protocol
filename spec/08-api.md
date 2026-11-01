@@ -70,6 +70,8 @@ Useful for provider discovery, capability negotiation, and federation setup. Age
 
 When `"notify:v1"` is listed, the provider implements the optional notification extension in [12 - Notification and Wake](12-notification.md) (`GET /v1/messages/pending/count`, the `after` cursor, delivery `basis`, replay and retry rules). `"notify:longpoll"` additionally means `GET /v1/messages/pending` accepts `wait`.
 
+When `"principals:person"` is listed, the provider supports people as senders: person addresses and mailboxes, one enrolled key per device, `kind` and `keys` in resolution, and `sender_kind` / `key_id` in the envelope (see [13 - Person Principals](13-person-principals.md)).
+
 When `"attachments:afp"` is listed, the provider accepts `afp` attachments (see [04 - Messages](04-messages.md#afp-attachments)). It never stores or scans them, so `attachment_limits` does not apply to them.
 
 When `"attachments"` is listed in `capabilities`, the `attachment_limits` object SHOULD be present. The limits describe `provider` attachments only. Federating providers MUST check these limits before forwarding messages with attachments to ensure the recipient provider can accept them (see [06 - Federation](06-federation.md#capability-negotiation)).

@@ -349,6 +349,7 @@ Prompt injection becomes harm when text read by a model turns into an action: *u
 4. **Same tenant is not unconditional.** `verified` messages are trusted for delivery, not for any action: a compromised or confused peer in the same tenant is still a peer. Agents SHOULD apply the rule 2 policy to actions that trace to `verified` content as well, with a more permissive policy if the operator chooses.
 5. **Approval is out of band.** When policy requires approval, it MUST be requested from the operator or another verified principal through a channel the untrusted content cannot answer on its own behalf (not a reply in the same thread that the content itself could provoke).
 6. **Attachments follow the same rules**, in addition to [Prompt Injection in Attachments](#prompt-injection-in-attachments).
+7. **People as principals.** A verified message from a person carries operator authority only for the agents that person manages; see [13 - Person Principals](13-person-principals.md#136-authority-normative).
 
 What AMP does and does not do here:
 

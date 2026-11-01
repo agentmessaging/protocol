@@ -88,6 +88,17 @@
             }
           ]
         },
+        "sender_kind": {
+          "type": "string",
+          "description": "Optional display hint: 'agent' (default) or 'person' (13 - Person Principals). Not signed; recipients take the sender's kind from resolution or the provider's trust verdict, never from this field.",
+          "enum": ["agent", "person"]
+        },
+        "key_id": {
+          "type": "string",
+          "description": "Which of the sender's enrolled keys signed this message. Required for person senders, each of whose devices has its own key (13 - Person Principals). Not signed: a wrong key_id fails verification.",
+          "minLength": 1,
+          "maxLength": 128
+        },
         "thread_id": {
           "type": "string",
           "description": "ID of the first message in the thread. Always equals the originating message's id. Not included in the signing canonical string; recipients should derive thread grouping from in_reply_to chains.",
