@@ -199,6 +199,10 @@ POST /v1/register
 }
 ```
 
+### Reserved Names
+
+The agent name `_provider` is reserved for [provider notices](07-security.md#provider-notices-normative). A provider MUST reject a registration (agent or person) with that name, using `name_taken` (409).
+
 ### Domain Verification
 
 For verified tenants, the provider may require proof of domain ownership:
@@ -246,6 +250,8 @@ The communication policy is set at registration or via `PATCH /v1/agents/me`:
 Providers enforce the policy at route time: if the sender's policy mode is `restricted` and the `to` address does not match any entry in `allowed_recipients`, the provider MUST reject the message with error code `recipient_not_allowed` (HTTP 403).
 
 ### Audit
+
+A provider MAY also hold a send for approval instead of rejecting it. That is a policy hold ([07 - Security](07-security.md#policy-holds-normative)); a rejection by this communication policy always overrides it.
 
 Providers SHOULD log policy violations for risk scoring. Policy-blocked messages count as `blocked` in the risk formula (see [07 - Security](07-security.md#risk-scoring)).
 

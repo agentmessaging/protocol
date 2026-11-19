@@ -72,6 +72,8 @@ When `"notify:v1"` is listed, the provider implements the optional notification 
 
 When `"principals:person"` is listed, the provider supports people as senders: person addresses and mailboxes, one enrolled key per device, `kind` and `keys` in resolution, and `sender_kind` / `key_id` in the envelope (see [13 - Person Principals](13-person-principals.md)).
 
+When `"quarantine:policy"` is listed, the provider may hold messages for approval under its own policy (reason `policy`), names `reviewers`, accepts decisions from them by REST or by signed message, and signs [provider notices](07-security.md#provider-notices-normative) with its provider key (see [07 - Security, Policy Holds](07-security.md#policy-holds-normative)).
+
 When `"attachments:afp"` is listed, the provider accepts `afp` attachments (see [04 - Messages](04-messages.md#afp-attachments)). It never stores or scans them, so `attachment_limits` does not apply to them.
 
 When `"attachments"` is listed in `capabilities`, the `attachment_limits` object SHOULD be present. The limits describe `provider` attachments only. Federating providers MUST check these limits before forwarding messages with attachments to ensure the recipient provider can accept them (see [06 - Federation](06-federation.md#capability-negotiation)).
@@ -590,9 +592,18 @@ Since attachment content is immutable (verified by digest), aggressive caching i
 
 For CORS, providers serving signed download URLs SHOULD include permissive CORS headers since the URLs are already authenticated via the signed token. API endpoints (not download URLs) SHOULD use restrictive CORS policies appropriate to the provider's security requirements.
 
-### Quarantine Management (Admin)
+### Quarantine Management (Admin and Reviewers)
 
-All quarantine endpoints require admin authentication. See [07 - Security](07-security.md#message-quarantine) for quarantine semantics.
+All quarantine endpoints require authentication as the tenant admin or as a reviewer. See [07 - Security](07-security.md#message-quarantine) for quarantine semantics.
+
+**Reviewer access.** A principal listed in an entry's `reviewers` ([Policy Holds](07-security.md#policy-holds-normative)) authenticates with its own credential: an agent with its API key, a person with the device authentication of [13.3](13-person-principals.md#133-sending-as-a-person-normative) step 1. Then:
+
+- `GET /v1/quarantine` returns only the entries that list the caller as a reviewer.
+- `GET /v1/quarantine/{id}`, `POST .../approve` and `POST .../reject` return `403 forbidden` unless the caller is the admin or a listed reviewer.
+- `POST .../approve` and `POST .../reject` return `403 forbidden` when the caller is the sender of the held message, even if listed.
+- A decision on an entry that is no longer `pending` returns `409 quarantine_decided`.
+
+A reviewer MAY instead decide with a signed message; see [Approval by message](07-security.md#policy-holds-normative).
 
 #### List Quarantined Messages
 
@@ -614,10 +625,23 @@ Response: 200 OK
       "quarantined_at": "2025-01-30T10:00:00Z",
       "expires_at": "2025-02-02T10:00:00Z",
       "status": "pending"
+    },
+    {
+      "quarantine_id": "qtn_1706648500_def456",
+      "from": "alice@acme.example.com",
+      "to": "payroll@acme.example.com",
+      "subject": "Raise for bob",
+      "reason": "policy",
+      "rules_triggered": ["payroll-needs-manager"],
+      "reason_text": "Messages to payroll need the payroll manager's approval",
+      "reviewers": ["p-carol@acme.example.com"],
+      "quarantined_at": "2025-01-30T10:01:40Z",
+      "expires_at": "2025-01-31T10:01:40Z",
+      "status": "pending"
     }
   ],
-  "count": 1,
-  "total": 1
+  "count": 2,
+  "total": 2
 }
 ```
 
@@ -673,7 +697,9 @@ Response: 200 OK
 }
 ```
 
-If the quarantine entry has already expired, returns HTTP 410 with error code `quarantine_expired`.
+If the quarantine entry has already expired, returns HTTP 410 with error code `quarantine_expired`. If it was already approved or rejected, returns HTTP 409 with error code `quarantine_decided`.
+
+Approval clears only the rules in the entry's `rules_triggered`. Checks not yet run still apply, so the message can be held again under a new entry ([Policy Holds](07-security.md#policy-holds-normative)).
 
 #### Reject Quarantined Message
 
@@ -1027,8 +1053,9 @@ The server MUST close the connection if no valid `auth` message is received with
 | `agent_suspended` | 403 | Sender agent is currently suspended |
 | `recipient_suspended` | 403 | Recipient agent is currently suspended |
 | `recipient_not_allowed` | 403 | Sender's communication policy does not allow messaging this recipient |
-| `message_quarantined` | 202 | Message accepted but held for security review |
+| `message_quarantined` | 202 | Message accepted but held for security review or for approval required by provider policy |
 | `quarantine_expired` | 410 | Quarantine entry has expired and can no longer be approved |
+| `quarantine_decided` | 409 | Quarantine entry was already approved or rejected |
 | `timestamp_future` | 400 | Message timestamp is too far in the future |
 | `request_too_large` | 413 | Request body exceeds 1 MB limit |
 | `internal_error` | 500 | Server error |
