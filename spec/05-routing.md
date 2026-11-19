@@ -81,10 +81,29 @@ Content-Type: application/json
 |--------|-------------|
 | `delivered` | Message delivered to recipient |
 | `queued` | Message queued for later delivery |
-| `quarantined` | Message held for security review |
+| `quarantined` | Message held for security review, or for approval required by provider policy |
 | `failed` | Delivery failed (see error) |
 
-A `quarantined` message has been accepted by the provider but is NOT delivered to the recipient until a human reviewer approves it. The sender receives HTTP 202 (accepted). See [07 - Security](07-security.md#message-quarantine) for quarantine triggers, states, and TTL.
+A `quarantined` message has been accepted by the provider but is NOT delivered to the recipient until a reviewer approves it (a human admin, or for a policy hold a listed reviewer). The sender receives HTTP 202 (accepted). See [07 - Security](07-security.md#message-quarantine) for quarantine triggers, states, and TTL.
+
+For a policy hold ([07 - Security, Policy Holds](07-security.md#policy-holds-normative)), the response MAY tell the sender why and who must approve:
+
+```json
+{
+  "id": "msg_1706648500_def456",
+  "status": "quarantined",
+  "quarantine": {
+    "quarantine_id": "qtn_1706648500_def456",
+    "reason": "policy",
+    "rules_triggered": ["payroll-needs-manager"],
+    "reason_text": "Messages to payroll need the payroll manager's approval",
+    "reviewers": ["p-carol@acme.example.com"],
+    "expires_at": "2025-01-31T10:01:40Z"
+  }
+}
+```
+
+For a detection hold, the `quarantine` object, if present, MUST carry only `quarantine_id` and `expires_at`.
 
 ### Method Values
 

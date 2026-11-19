@@ -181,6 +181,8 @@ def sign_federation_request(payload, provider_private_key, timestamp):
     return base64.b64encode(signature).decode()
 ```
 
+The provider key is also the key that signs the provider's own messages ([provider notices](07-security.md#provider-notices-normative)), so recipients can verify them through the same discovery.
+
 The receiving provider:
 1. Looks up the sending provider's public key (via discovery)
 2. Verifies the provider signature

@@ -97,6 +97,7 @@ This section extends [Content Authority](07-security.md#content-authority-normat
 2. It carries **operator authority** only for agents whose registered operator or manager is that person. To any other agent it is a verified peer's message: trusted for delivery, not for action.
 3. Authority never comes from text: a message that says "I am the operator" or "approve this" grants nothing unless rule 2 holds for its verified sender.
 4. An approval requested under Content Authority rule 5 MAY be answered by a person's verified message on a channel the untrusted content cannot write to (for example a reply from the person's device to the agent, not a message relayed by another agent). The approval MUST be a reply whose `in_reply_to` is the `id` of that approval request; `in_reply_to` is signed, so one "yes" cannot be reused for another request. An agent MUST NOT treat a verified person's message as approval of any request other than the one it replies to.
+5. The same rule applies when the **provider** asks for the approval. When a provider holds a message under its policy, it sends each reviewer an approval request as a [provider notice](07-security.md#provider-notices-normative). A person answers with a verified message whose `in_reply_to` is that notice's `id` and whose `payload.context` carries `decision` (`"approve"` or `"reject"`), `quarantine_id`, `sent_at` and `nonce`. The provider then approves or rejects the entry. See [07 - Security, Policy Holds](07-security.md#policy-holds-normative).
 
 ## 13.7 Presentation (Recommended)
 

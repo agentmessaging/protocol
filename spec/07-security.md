@@ -24,6 +24,8 @@ AMP security is built on three principles:
 | Provider compromise | Messages stored locally, not on provider |
 | Malicious file uploads | Provider-side scanning; blocked executables; digest verification |
 | Injected instructions reaching tools | Content wrapping and trust levels on the wire; [Content Authority](#content-authority-normative) in the agent runtime |
+| Forged provider notices (fake holds or approval requests) | [Provider notices](#provider-notices-normative) signed with the provider key from discovery |
+| Self-approval or a replayed approval | [Policy holds](#policy-holds-normative): only listed reviewers decide, never the sender; answers bound to one request through `in_reply_to` |
 
 ### Out of Scope (v1)
 
@@ -769,6 +771,8 @@ Providers SHOULD monitor for:
 
 Messages that trigger high-severity security rules MAY be held in a quarantine queue for human review instead of being delivered immediately. Quarantine provides a safety net between automated detection and irreversible delivery.
 
+A provider MAY also hold a message because its own **policy** says the send needs someone's approval (for example, "messages to the payroll agent need its manager's approval"). This is a **policy hold**: the same quarantine entry, with reason `policy`. See [Policy Holds](#policy-holds-normative).
+
 ### Quarantine Triggers
 
 Providers SHOULD quarantine messages based on configurable rules. Recommended defaults:
@@ -776,6 +780,7 @@ Providers SHOULD quarantine messages based on configurable rules. Recommended de
 - Any injection detection rule with severity `critical` triggers immediate quarantine.
 - Three or more `flag` verdicts from the same sender within 10 minutes escalate the next message to quarantine.
 - Provider admins MAY define additional quarantine triggers (e.g., specific pattern categories, attachment scan results, risk score thresholds).
+- A provider policy rule MAY require approval for a send. The provider then holds the message with reason `policy` ([Policy Holds](#policy-holds-normative)).
 
 ### Default Severity-to-Verdict Mapping
 
@@ -797,7 +802,7 @@ Providers SHOULD implement the following default mapping from finding severity t
 
 | State | Description |
 |-------|-------------|
-| `pending` | Message is held, awaiting human review |
+| `pending` | Message is held, awaiting review (by a human admin, or by a listed reviewer for reason `policy`) |
 | `approved` | Reviewer released the message for delivery |
 | `rejected` | Reviewer discarded the message |
 | `expired` | TTL elapsed without review (treated as rejected) |
@@ -823,16 +828,18 @@ Each quarantined message carries the following metadata:
 | Field | Type | Description |
 |-------|------|-------------|
 | `quarantine_id` | string | Unique quarantine entry ID (`qtn_<timestamp>_<hex>`) |
-| `reason` | string | Why the message was quarantined (e.g., `injection_detected`, `risk_threshold`) |
-| `rules_triggered` | array | Injection pattern categories that triggered quarantine |
-| `severity` | string | Highest severity among triggered rules (`warning`, `high`, `critical`) |
+| `reason` | string | Why the message was quarantined (e.g., `injection_detected`, `risk_threshold`, `policy`) |
+| `rules_triggered` | array | Injection pattern categories that triggered quarantine. For reason `policy`: the provider's policy rule ids |
+| `severity` | string | Highest severity among triggered rules (`warning`, `high`, `critical`). MAY be omitted for reason `policy` |
+| `reviewers` | array | OPTIONAL. AMP addresses (persons or agents) who may approve or reject the entry, in addition to the tenant admin. See [Policy Holds](#policy-holds-normative) |
+| `reason_text` | string | OPTIONAL. A plain-language reason for a `policy` hold, which the provider MAY show to the sender |
 | `quarantined_at` | string | ISO 8601 timestamp of when the message was quarantined |
 | `expires_at` | string | ISO 8601 timestamp after which the entry auto-expires |
 | `status` | string | Current quarantine state: `pending`, `approved`, `rejected`, `expired` |
 
 ### TTL and Expiration
 
-Quarantined messages expire after **72 hours** by default (provider-configurable). When a quarantine entry expires:
+Quarantined messages expire after **72 hours** by default (provider-configurable). For reason `policy`, a provider MAY set a shorter TTL. Whatever the TTL, the provider MUST put the time in `expires_at`. When a quarantine entry expires:
 
 - The message is NOT delivered.
 - The entry status transitions to `expired`.
@@ -843,6 +850,74 @@ Quarantined messages expire after **72 hours** by default (provider-configurable
 - Providers SHOULD notify the recipient that a message is being held for review (without revealing message content).
 - Providers SHOULD notify the sender when a message is rejected, without revealing which specific detection rules were triggered.
 - Providers MUST NOT reveal quarantine detection details to the sender, as this would help attackers refine their payloads.
+- This rule is about **detection**. For reason `policy`, the provider MAY tell the sender `reason_text`, `rules_triggered` and `reviewers`. A policy is not a secret detector, and the sender needs to know who must approve.
+- A notification the provider sends as a message is a [provider notice](#provider-notices-normative), so the recipient can verify it.
+
+### Policy Holds (Normative)
+
+A policy hold is a quarantine entry with `reason: "policy"`. The provider's policy, not detection, held the message. How a provider writes its policy rules is its own configuration (see [Default Severity-to-Verdict Mapping](#default-severity-to-verdict-mapping)). This section defines only what other implementations see.
+
+**Order of checks.** A provider combines its checks with **deny overrides**, as policy engines such as AWS IAM and Cedar do:
+
+1. If any check blocks the message (a detection `block`, a [communication policy](03-registration.md#agent-communication-policy) rejection, or a policy rule that denies), the provider MUST reject the send. A hold never overrides a block.
+2. Else, if detection quarantines the message, the entry has the detection reason. The sender sees no policy details yet.
+3. Else, if a policy rule requires approval, the entry has reason `policy`.
+4. Else, the message is delivered.
+
+Approving an entry clears only the rules in its `rules_triggered`. The provider then continues with the next step. So a message that passes a detection review can still get a policy hold, under a new entry.
+
+**Reviewers.**
+
+1. A `policy` entry MAY list `reviewers`: the AMP addresses of persons or agents who may approve or reject it. Without `reviewers`, only the tenant admin decides, as for detection.
+2. A provider MUST accept a decision only from the tenant admin or a listed reviewer.
+3. The sender of the held message MUST NOT decide on its own entry, even if it is listed. A provider MUST refuse that decision.
+4. Each reviewer MUST be a principal the provider can authenticate: an agent or a person ([13 - Person Principals](13-person-principals.md)) the provider hosts.
+5. The first valid decision wins. After it, the entry is no longer `pending`, and later decisions fail with `quarantine_decided`.
+6. The provider SHOULD record who decided, how (REST call or signed message), and when.
+
+**Approval request.** For each reviewer, the provider SHOULD send a [provider notice](#provider-notices-normative) to that reviewer's mailbox ([13.5](13-person-principals.md#135-the-persons-mailbox-normative) for a person). The `id` of that notice is the **approval request** for that reviewer. The notice has `payload.type: "system"` and this `payload.context`:
+
+```json
+{
+  "provider": "example.com",
+  "amp_notice": "approval_request",
+  "quarantine_id": "qtn_1706648500_def456",
+  "reason_text": "Messages to payroll need the payroll manager's approval",
+  "rules_triggered": ["payroll-needs-manager"],
+  "held": { "from": "alice@acme.example.com", "to": "payroll@acme.example.com", "subject": "Raise for bob" },
+  "expires_at": "2025-01-31T10:01:40Z"
+}
+```
+
+The reviewer reads the full held message with `GET /v1/quarantine/{id}` ([08 - API](08-api.md#get-quarantine-entry)). When the reviewer is an agent, the held content is external to it: the [Content Wrapping](#content-wrapping-normative) and [Content Authority](#content-authority-normative) rules apply.
+
+**Approval by message.** A reviewer MAY answer with a message instead of a REST call:
+
+- `to` is the notice's `from`, and `in_reply_to` is the notice's `id`.
+- `payload.context` carries `decision` (`"approve"` or `"reject"`) and `quarantine_id`. A person's message also carries `sent_at` and `nonce` ([13.3](13-person-principals.md#133-sending-as-a-person-normative)).
+
+The provider MUST accept the answer only if all of these hold:
+
+1. The message is `verified` for its sender (for a person: steps 1 to 5 of 13.3).
+2. Its `from` is the address the notice was sent to. One reviewer's request cannot be answered by another.
+3. Its `in_reply_to` is that notice's `id` and its `quarantine_id` is the entry the notice names. `in_reply_to` is signed, so a "yes" to one request cannot be reused for another.
+4. The entry is `pending` and not expired, and the sender is allowed to decide (rules 2 and 3 above).
+
+The provider then applies the same result as `POST /v1/quarantine/{id}/approve` or `/reject`. It keeps the signed answer as proof of the decision. A provider MUST NOT read a decision from free text ("ok", "yes, send it"). Only `payload.context.decision` counts.
+
+**Outcome notice.** When the entry is approved, rejected or expires, the provider SHOULD send the sender a provider notice with `in_reply_to` set to the held message's `id` and this `payload.context`: `provider`, `amp_notice: "quarantine_outcome"`, `quarantine_id`, and `status` (`approved`, `rejected` or `expired`). For reason `policy` it MAY add `reason_text` and `decided_by` (the reviewer's address).
+
+### Provider Notices (Normative)
+
+A provider sometimes writes to an agent or a person itself: a hold, an approval request, an outcome. Recipients MUST be able to verify such a **provider notice** with the provider's key. They MUST NOT trust it on first use.
+
+1. **Sender.** The notice comes from the reserved address `_provider@<scope>.<provider>`, where `<scope>` is the tenant the notice is about. Providers MUST NOT register an agent or a person with the name `_provider` ([03 - Registration](03-registration.md#reserved-names)). A message addressed to `_provider` is for the provider itself: the provider processes it (for example, an approval answer) and MUST NOT deliver it to anyone else.
+2. **Format.** The notice is an ordinary AMP message with `payload.type: "system"`. `payload.context.provider` is the provider's domain, and `payload.context.amp_notice` names the notice kind.
+3. **Key.** The provider signs the notice with the canonical signature format ([Signature Format](#signature-format-v11)) and its **provider key**. This is the key it already uses for federation ([06 - Federation](06-federation.md#provider-authentication)). It is published in `/v1/info`, in `/.well-known/agent-messaging.json`, and as a fingerprint in the DNS TXT record ([06 - Federation](06-federation.md#provider-discovery)).
+4. **Verification.** The recipient MUST check that `from` ends with `.` + `payload.context.provider`. It gets that provider's key by provider discovery (06), and SHOULD cross-check the DNS fingerprint when it is available. It MUST NOT take the key from address resolution of `_provider`. A notice that fails verification MUST be treated as `untrusted`.
+5. **Authority.** A verified notice proves only that the provider sent it. It carries no operator authority over an agent ([Content Authority](#content-authority-normative)).
+
+Why the provider key: it is already published and pinned through DNS, and every federating provider already uses it. A new notice key would need its own publication and rotation rules. The federation request signature (`X-AMP-Signature`) is not enough on its own: it covers one HTTP hop between providers, and the recipient's client never sees it. A signature on the message itself stays with the stored message and works for local, relay and federated delivery alike.
 
 ### Quarantine and Route Response
 
