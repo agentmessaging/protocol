@@ -13,11 +13,30 @@
     },
     "local": {
       "$ref": "#/definitions/local"
+    },
+    "security": {
+      "$ref": "#/definitions/stored_security"
     }
   },
   "required": ["envelope", "payload"],
   "additionalProperties": false,
   "definitions": {
+    "stored_security": {
+      "title": "Stored Security Metadata",
+      "description": "Trust and threat assessment recorded by the receiver at delivery time (04 - Messages, Stored Message Format). Not covered by the message signature.",
+      "type": "object",
+      "properties": {
+        "trust_level": { "type": "string", "enum": ["verified", "external", "untrusted", "org-verified"], "description": "Trust level per 07 - Security, Trust Level Determination." },
+        "injection_flags": { "type": "array", "items": { "type": "string" }, "description": "Injection pattern categories detected." },
+        "quarantine_id": { "oneOf": [{ "type": "string" }, { "type": "null" }] },
+        "window_scan_result": { "oneOf": [{ "type": "string", "enum": ["flagged", "quarantined", "blocked"] }, { "type": "null" }] },
+        "sender_risk_score": { "oneOf": [{ "type": "integer", "minimum": 0, "maximum": 100 }, { "type": "null" }] },
+        "sender_risk_level": { "oneOf": [{ "type": "string", "enum": ["low", "medium", "high", "critical"] }, { "type": "null" }] },
+        "payload_hash": { "type": "string", "description": "The payload_hash the receiver verified the signature with; the stored payload must hash to it." },
+        "verified_at": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": true
+    },
     "envelope": {
       "title": "Message Envelope",
       "description": "Routing metadata visible to providers. Contains addressing, threading, priority, timestamp, and the sender's cryptographic signature.",

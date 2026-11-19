@@ -43,7 +43,8 @@ This appendix provides a deployment hardening checklist for AMP provider impleme
 
 | Severity | Item | Reference |
 |----------|------|-----------|
-| Critical | External message content wrapped in `<external-content>` tags | [07 - Security](07-security.md#content-wrapping-normative) |
+| Critical | External message content wrapped in `<external-content>` tags where it is presented to the agent, never in the stored `payload`; verified same-tenant content not wrapped | [07 - Security](07-security.md#where-wrapping-applies) |
+| Critical | Stored messages keep `payload` and the signed envelope fields (`to` as the full address) exactly as signed | [04 - Messages](04-messages.md#stored-message-format) |
 | Critical | Injection scanning enabled for incoming messages | [07 - Security](07-security.md#prompt-injection-defense) |
 | High | Quarantine active for critical-severity findings | [07 - Security](07-security.md#message-quarantine) |
 | High | Default severity-to-verdict mapping implemented | [07 - Security](07-security.md#default-severity-to-verdict-mapping) |
