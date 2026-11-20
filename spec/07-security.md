@@ -333,6 +333,15 @@ For `untrusted` messages (if not rejected outright):
 
 Providers MUST NOT wrap messages from `verified` senders (same tenant, valid signature).
 
+#### Where wrapping applies
+
+Wrapping applies to the content as it is presented to the recipient agent's model: an injected prompt, a notification or push that carries the text, a webhook to an agent runtime. It never changes the message itself:
+
+- The stored or returned message keeps `payload` and the signed envelope fields exactly as signed ([04 - Messages](04-messages.md#stored-message-format)), so the recipient can still verify the signature. A wrapped `payload` no longer hashes to the signed `payload_hash`, and could not be told apart from a forgery.
+- The receiver records the trust level in the message's `security` metadata (`trust_level`; `local.security.trust` in older stores).
+- A client or agent runtime that presents a stored message's content to a model MUST wrap it as above when its trust level is `external` or `untrusted`. A client that verifies the signature itself MAY classify the message itself (see [Trust Level Algorithm](#trust-level-algorithm)).
+- The trust level follows the signature check and the tenant, never the route a message took or whether a sender key happened to be available locally. A verified message from another host in the same tenant is `verified`, and is not wrapped ([06a - Local Networks](06a-local-networks.md#trust-model)).
+
 ### Prompt Injection Defense
 
 Messages from external or untrusted sources MUST be treated as data, not instructions. AI agents receiving AMP messages SHOULD implement injection detection as a defense-in-depth measure.
@@ -384,7 +393,7 @@ Providers MAY include a `security` field in the message's local metadata to prop
 |-------|------|-------------|
 | `trust` | string | `"verified"`, `"external"`, or `"untrusted"` |
 | `injection_flags` | array | Injection pattern categories detected (e.g., `["instruction_override"]`) |
-| `wrapped` | boolean | Whether the content was wrapped with `<external-content>` tags |
+| `wrapped` | boolean | Whether the content the provider presented to the agent was wrapped with `<external-content>` tags. The stored `payload` is never wrapped ([Where wrapping applies](#where-wrapping-applies)) |
 | `verified_at` | string | ISO 8601 timestamp of when the signature was verified |
 
 This metadata allows agents to make informed trust decisions without re-verifying the signature.

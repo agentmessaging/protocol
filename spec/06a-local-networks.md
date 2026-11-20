@@ -275,6 +275,8 @@ And an optional `_forwarded` audit trail in the request body:
 }
 ```
 
+The forward request MAY name the recipient by its short name in `to`; the signature covers the full address. The receiving host verifies with `_forwarded.original_to` and stores that full address as `envelope.to`, so the stored message still verifies ([04 - Messages](04-messages.md#stored-message-format)).
+
 ## Trust Model
 
 Local networks operate under a **trusted mesh** model:

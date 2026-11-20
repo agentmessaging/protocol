@@ -534,6 +534,12 @@ The `digest` field uses a prefixed format: `<algorithm>:<hex>`. The current prot
 
 ### Stored Message Format
 
+A stored message keeps what the sender signed. Providers and agents MUST store `payload` exactly as it was signed, and the signed envelope fields (`from`, `to`, `subject`, `priority`, `in_reply_to`) with the values the signature covers, so anyone who reads the stored message can verify it again ([Signature Verification](#signature-verification)):
+
+- `payload` is not rebuilt, filtered or extended: no field is added (for example a `null` `context` or an empty `attachments` list), removed or rewritten. Content wrapping ([07 - Security](07-security.md#content-wrapping-normative)) is never applied to the stored `payload`.
+- `to` is the recipient's full address as signed, also after a forwarding hop that named the recipient another way ([06a - Local Networks](06a-local-networks.md#forwarding-headers)).
+- What the receiver adds (delivery state, local file paths, trust and scan results) goes in `local` or `security`, which the signature does not cover.
+
 ```json
 {
   "envelope": { ... },
@@ -551,7 +557,9 @@ The `digest` field uses a prefixed format: `<algorithm>:<hex>`. The current prot
     "quarantine_id": null,
     "window_scan_result": null,
     "sender_risk_score": 15,
-    "sender_risk_level": "medium"
+    "sender_risk_level": "medium",
+    "payload_hash": "K7gNU3sdo+OL0wNhqoVWhr3g6s1xYv72ol/pe/Unols=",
+    "verified_at": "2025-01-30T10:00:04Z"
   }
 }
 ```
@@ -566,6 +574,8 @@ The optional `security` object captures trust and threat assessment metadata at 
 | `window_scan_result` | string | Result of multi-message window scan: `null` (not scanned or clean), `"flagged"`, `"quarantined"`, or `"blocked"` |
 | `sender_risk_score` | integer | Sender's risk score at delivery time (0–100), `null` if unavailable |
 | `sender_risk_level` | string | Sender's risk level at delivery time: `"low"`, `"medium"`, `"high"`, `"critical"`, or `null` |
+| `payload_hash` | string | The `payload_hash` the receiver verified the signature with. A reader without the sender's key can check that the stored `payload` hashes to it (unchanged since verification); a reader with the key verifies the signature itself |
+| `verified_at` | string | ISO 8601 time the receiver verified the signature |
 
 > **Note:** The `security` object is a top-level field alongside `envelope`, `payload`, and `local`. It is NOT nested inside `local`. This separates routing metadata (`local`) from security assessment metadata (`security`). Providers populating `local.security` (as shown in [07 - Security](07-security.md#security-metadata)) for backward compatibility MAY continue to do so, but the top-level `security` object is the canonical location for new fields.
 
