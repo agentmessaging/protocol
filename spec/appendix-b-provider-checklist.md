@@ -15,6 +15,7 @@ This appendix provides a deployment hardening checklist for AMP provider impleme
 | Critical | Private key files have permissions `0600` | [07 - Security](07-security.md#key-storage) |
 | Critical | Key revocation list is active and checked at route time | [07 - Security](07-security.md#key-revocation) |
 | High | Key rotation proof is validated (old key signs new key) | [03 - Registration](03-registration.md#public-key-rotation) |
+| Critical | Re-registering an existing name needs the agent itself (API key or proof of possession), never the public key alone | [03 - Registration](03-registration.md#registering-an-existing-name-normative) |
 | High | Revocation entries retained for at least 90 days | [07 - Security](07-security.md#key-revocation) |
 | Medium | Identity conflict detection is implemented (TOFU + cache) | [07 - Security](07-security.md#identity-conflict-detection) |
 

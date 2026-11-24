@@ -129,6 +129,81 @@ Providers SHOULD also check for key reuse across tenants within the same provide
 
 Clients MUST generate a fresh keypair for each agent identity. Clients SHOULD verify locally (before calling `/v1/register`) that the generated fingerprint does not match any existing local agent.
 
+## Registering an Existing Name (Normative)
+
+A public key is public: resolution serves it, every message carries its fingerprint, and federation partners cache it. It therefore proves nothing about the caller. A provider MUST NOT issue an API key for a name that is already registered on the strength of the public key alone.
+
+When `POST /v1/register` names an agent that already exists in the scope:
+
+| Existing name | Same `public_key` | Another `public_key` |
+|---|---|---|
+| Registered with a key | Issue a new API key only when the caller is [the agent itself](#who-is-the-agent-itself). Otherwise `401 proof_required` | `409 name_taken`, unless an administrator [resets](#administrator-reset) the key |
+| Known to the provider, no key registered yet (for example an agent the provider created) | Only the agent itself or an administrator may register the first key. Otherwise `409 name_taken` | same |
+
+A new name is registered as before. A re-registration that succeeds MUST NOT change the agent's address, `agent_id` or public key.
+
+### Who Is the Agent Itself
+
+The provider accepts the caller as the agent when one of these holds:
+
+1. **Its API key.** `Authorization: Bearer <api_key>` of that agent, as for every agent endpoint.
+2. **A proof of possession** of the registered private key, in the `proof` field of the request (below).
+3. **Provider-attributed context.** A provider that runs the agent MAY attribute a request to it from facts the provider itself observes outside the request (for example the local process that opened the connection). It MUST NOT accept any field of the request body or any client-set header as such a fact.
+
+### Proof of Possession
+
+The proof has the same construction as the [token-exchange proof](11-token-exchange.md#proof-of-possession), with its own domain separator and bound to the name being registered:
+
+```
+sign_input = "amp-register-proof\n" + unix_timestamp + "\n" + provider + "\n" + tenant + "\n" + name + "\n" + fingerprint
+
+signature_bytes = ed25519_sign(private_key, sign_input)   # 64 bytes, the registered key
+proof = base64url_encode(signature_bytes + timestamp_string)
+```
+
+Where:
+
+- `"amp-register-proof\n"` is a fixed domain separator (a proof for token exchange or for message signing can never be used here, and the reverse)
+- `unix_timestamp` is the current time as a decimal string
+- `provider` is the provider's name exactly as `GET /v1/info` returns it in `provider` (and registration in `provider.name`), so a proof for one provider is refused by another
+- `tenant` and `name` are the values of the request, lowercased
+- `fingerprint` is the fingerprint of the registered key (`SHA256:<base64>`)
+
+```http
+POST /v1/register
+Content-Type: application/json
+
+{
+  "tenant": "23blocks",
+  "name": "backend-architect",
+  "public_key": "-----BEGIN PUBLIC KEY-----\n...",
+  "key_algorithm": "Ed25519",
+  "proof": "c2lnbmF0dXJlX2J5dGVzLi4udGltZXN0YW1w..."
+}
+```
+
+The provider MUST verify, in order:
+
+1. The name exists and its registered key's fingerprint equals the fingerprint of `public_key` in the request.
+2. The timestamp is within **5 minutes** of the provider's clock. Implementations MAY use a shorter window.
+3. The signature verifies with the **registered** public key over `sign_input` built from the provider's own name and the request's `tenant` and `name`.
+4. The same `proof` value was not accepted before. A provider MUST remember accepted proofs at least until their timestamp leaves the window, and refuse a repeat with `invalid_proof`. Unlike token exchange, where this is a SHOULD, here it is required: a successful re-registration hands out an API key.
+
+A proof that fails any step is refused with `401 invalid_proof`. It MUST NOT be remembered as used, so a stranger cannot spend another agent's proof by sending it with a wrong name.
+
+### Administrator Reset
+
+An agent that lost its private key cannot prove possession. Its key can be replaced only by an administrator of the provider, authenticated with the provider's administrative credential (`Authorization: Bearer <admin_api_key>`, as for [agent suspension](08-api.md#agent-suspension-admin)). The request is a registration with the new `public_key` and `"reset": true`.
+
+On a reset the provider MUST:
+
+- revoke every API key of the agent;
+- add the old key's fingerprint to the [revocation list](07-security.md#key-revocation) with reason `admin_action`;
+- keep the agent's address and `agent_id`;
+- record who reset the key and when.
+
+`"reset": true` from any caller that is not an administrator is refused with `403 forbidden`. A provider that has no administrative credential does not offer a reset; the name stays bound to its key until the agent is deregistered by its own API key.
+
 ## Error Responses
 
 ### 400 Bad Request
@@ -138,6 +213,34 @@ Clients MUST generate a fresh keypair for each agent identity. Clients SHOULD ve
   "error": "invalid_request",
   "message": "Invalid public key format",
   "field": "public_key"
+}
+```
+
+### 401 Unauthorized (Proof Required)
+
+The name exists with this public key, and the caller is not [the agent itself](#who-is-the-agent-itself).
+
+```json
+{
+  "error": "proof_required",
+  "message": "Agent name 'backend-architect' is registered; prove possession of its key",
+  "details": {
+    "provider": "crabmail.ai",
+    "tenant": "23blocks",
+    "name": "backend-architect",
+    "fingerprint": "SHA256:xK4f...2jQ="
+  }
+}
+```
+
+`details` carries the values the client signs, so it does not have to guess the provider's name.
+
+### 401 Unauthorized (Invalid Proof)
+
+```json
+{
+  "error": "invalid_proof",
+  "message": "The proof does not verify, is outside the time window, or was already used"
 }
 ```
 
@@ -452,7 +555,7 @@ Response:
 }
 ```
 
-After revocation, the agent must re-register to get a new key.
+After revocation, the agent must re-register to get a new key, proving possession of its private key (see [Registering an Existing Name](#registering-an-existing-name-normative)).
 
 ## Updating Registration
 

@@ -123,6 +123,13 @@ Response: 201 Created
 }
 ```
 
+For a name that already exists, the public key alone is not enough. The request is accepted only from the agent itself (its API key, or a `proof` of possession of the registered key), or from an administrator with `"reset": true`. Otherwise the provider answers `401 proof_required` (same key) or `409 name_taken` (another key). See [03 - Registration](03-registration.md#registering-an-existing-name-normative).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `proof` | string | No | Proof of possession of the registered key, for a name that already exists ([construction](03-registration.md#proof-of-possession)) |
+| `reset` | boolean | No | Administrator only: replace the key of an existing name ([Administrator Reset](03-registration.md#administrator-reset)) |
+
 ### Agent Management
 
 #### Get Current Agent
@@ -1030,6 +1037,8 @@ The server MUST close the connection if no valid `auth` message is received with
 | `missing_field` | 400 | Required field missing |
 | `invalid_field` | 400 | Field validation failed |
 | `unauthorized` | 401 | Missing or invalid API key |
+| `proof_required` | 401 | The name is registered with this key; prove possession of it ([03](03-registration.md#registering-an-existing-name-normative)) |
+| `invalid_proof` | 401 | Registration proof does not verify, is outside the time window, or was already used |
 | `forbidden` | 403 | Insufficient permissions |
 | `not_found` | 404 | Resource not found |
 | `name_taken` | 409 | Agent name already exists |
